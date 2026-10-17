@@ -39,3 +39,4 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Salon Booking", lifespan=lifespan)
 app.include_router(health_router)
+
