@@ -1,0 +1,49 @@
+services:
+  api:
+    build: .
+    env_file: .env
+    environment:
+      # Внутри сети Compose сервисы видят друг друга по имени сервиса, а не по localhost
+      POSTGRES_HOST: db
+      REDIS_HOST: redis
+    ports:
+      - "8000:8000"
+    volumes:
+      # Код монтируем с компьютера, чтобы правки сразу попадали в контейнер
+      - ./app:/srv/app
+    # --reload перезапускает сервер при изменении файлов (только для разработки)
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      # Ждём не просто запуска контейнеров, а их готовности (см. healthcheck ниже)
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+    - "6432:5432"
+    volumes:
+      # Именованный том: данные переживают пересоздание контейнера
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
