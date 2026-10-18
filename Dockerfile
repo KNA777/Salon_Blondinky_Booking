@@ -20,6 +20,7 @@ COPY pyproject.toml uv.lock* ./
 RUN uv sync --no-dev --no-install-project
 
 COPY app ./app
+COPY alembic.ini ./
 
 # Виртуальное окружение uv добавляем в PATH, чтобы вызывать `uvicorn` напрямую.
 ENV PATH="/srv/.venv/bin:$PATH"
@@ -29,4 +30,4 @@ RUN useradd --create-home appuser
 USER appuser
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
