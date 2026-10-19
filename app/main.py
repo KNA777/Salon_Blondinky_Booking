@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.health import router as health_router
 from app.core.config import get_settings
+from app.api import main_router
 
 
 @asynccontextmanager
@@ -39,4 +40,5 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Salon Booking", lifespan=lifespan)
 app.include_router(health_router)
+app.include_router(main_router)
 

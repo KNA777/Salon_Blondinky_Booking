@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     postgres_password: str
     postgres_db: str
 
-    postgres_host: str = "localhost"
-    postgres_port: int = 5432
+    postgres_host: str
+    postgres_port: int
 
     redis_host: str = "localhost"
     redis_port: int = 6379

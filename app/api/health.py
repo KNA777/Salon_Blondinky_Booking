@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 
-from app.api.deps import RedisDep, SessionDep
+from app.api.deps import RedisDep, DBDep
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-async def health(session: SessionDep, redis: RedisDep, response: Response) -> dict[str, str]:
+async def health(session: DBDep, redis: RedisDep, response: Response) -> dict[str, str]:
     """Проверка, что приложение живо и видит Postgres и Redis.
 
     Если хотя бы один сервис недоступен, отвечаем 503: по коду ответа это понимают
@@ -18,7 +18,7 @@ async def health(session: SessionDep, redis: RedisDep, response: Response) -> di
     # Здесь намеренно ловим любое исключение: задача проверки — не упасть,
     # а сообщить, что именно не работает.
     try:
-        await session.execute(text("SELECT 1"))
+        await session.session.execute(text("SELECT 1"))
         checks["postgres"] = "ok"
     except Exception as exc:
         checks["postgres"] = f"error: {type(exc).__name__}"

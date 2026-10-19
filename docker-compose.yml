@@ -5,7 +5,7 @@ services:
     environment:
       # Внутри сети Compose сервисы видят друг друга по имени сервиса, а не по localhost
       POSTGRES_HOST: db
-      POSTGRES_PORT: 5432
+#      POSTGRES_PORT: 5432
       REDIS_HOST: redis
     ports:
       - "8000:8000"
