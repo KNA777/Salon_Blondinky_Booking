@@ -3,13 +3,13 @@ from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, CreatedAtMixin
+from app.models.base import BaseORM, CreatedAtMixin
 
 if TYPE_CHECKING:
-    from app.models.appointment import Appointment
+    from app.models.appointment import AppointmentORM
 
 
-class Client(CreatedAtMixin, Base):
+class ClientORM(CreatedAtMixin, BaseORM):
     __tablename__ = "clients"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -21,4 +21,4 @@ class Client(CreatedAtMixin, Base):
     # В unique-колонке Postgres допускает много NULL, так что таких клиентов может быть много.
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
 
-    appointments: Mapped[list["Appointment"]] = relationship(back_populates="client")
+    appointments: Mapped[list["AppointmentORM"]] = relationship(back_populates="client")

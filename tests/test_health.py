@@ -21,6 +21,16 @@ class BrokenSession:
         raise ConnectionRefusedError
 
 
+class FakeDBManager:
+    # /health обращается к БД через session.session (AsyncSession внутри DBManager),
+    # поэтому фейк имитирует DBManager, а не голую сессию.
+    session = FakeSession()
+
+
+class BrokenDBManager:
+    session = BrokenSession()
+
+
 class FakeRedis:
     async def ping(self):
         return True
@@ -40,7 +50,7 @@ def client():
 
 
 def test_health_ok(client):
-    app.dependency_overrides[get_session] = lambda: FakeSession()
+    app.dependency_overrides[get_session] = lambda: FakeDBManager()
     app.dependency_overrides[get_redis] = lambda: FakeRedis()
 
     response = client.get("/health")
@@ -50,7 +60,7 @@ def test_health_ok(client):
 
 
 def test_health_postgres_down(client):
-    app.dependency_overrides[get_session] = lambda: BrokenSession()
+    app.dependency_overrides[get_session] = lambda: BrokenDBManager()
     app.dependency_overrides[get_redis] = lambda: FakeRedis()
 
     response = client.get("/health")
@@ -63,7 +73,7 @@ def test_health_postgres_down(client):
 
 
 def test_health_redis_down(client):
-    app.dependency_overrides[get_session] = lambda: FakeSession()
+    app.dependency_overrides[get_session] = lambda: FakeDBManager()
     app.dependency_overrides[get_redis] = lambda: BrokenRedis()
 
     response = client.get("/health")

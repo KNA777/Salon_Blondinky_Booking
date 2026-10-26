@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING
 from sqlalchemy import CheckConstraint, Enum, ForeignKey, Index, Numeric, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, CreatedAtMixin
+from app.models.base import BaseORM, CreatedAtMixin
 
 if TYPE_CHECKING:
-    from app.models.client import Client
-    from app.models.master import Master
-    from app.models.service import Service
+    from app.models.client import ClientORM
+    from app.models.master import MasterORM
+    from app.models.service import ServiceORM
 
 
-class AppointmentStatus(enum.StrEnum):
+class AppointmentStatusEnum(enum.StrEnum):
     CREATED = "created"
     CONFIRMED = "confirmed"
     COMPLETED = "completed"
@@ -22,7 +22,7 @@ class AppointmentStatus(enum.StrEnum):
     CANCELLED = "cancelled"
 
 
-class Appointment(CreatedAtMixin, Base):
+class AppointmentORM(CreatedAtMixin, BaseORM):
     """Запись клиента к мастеру на услугу: центральная таблица, она ссылается на остальные."""
 
     __tablename__ = "appointments"
@@ -54,19 +54,19 @@ class Appointment(CreatedAtMixin, Base):
     # Нативный ENUM неудобно менять: добавление статуса требует отдельной команды ALTER TYPE,
     # а Alembic такие изменения сам не замечает.
     # values_callable: в БД пишем "no_show", а не "NO_SHOW" (имя члена Python-перечисления).
-    status: Mapped[AppointmentStatus] = mapped_column(
+    status: Mapped[AppointmentStatusEnum] = mapped_column(
         Enum(
-            AppointmentStatus,
+            AppointmentStatusEnum,
             native_enum=False,
             length=20,
             values_callable=lambda enum_cls: [member.value for member in enum_cls],
         ),
-        default=AppointmentStatus.CREATED,
-        server_default=AppointmentStatus.CREATED.value,
+        default=AppointmentStatusEnum.CREATED,
+        server_default=AppointmentStatusEnum.CREATED.value,
     )
 
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
-    client: Mapped["Client"] = relationship(back_populates="appointments")
-    master: Mapped["Master"] = relationship(back_populates="appointments")
-    service: Mapped["Service"] = relationship(back_populates="appointments")
+    client: Mapped["ClientORM"] = relationship(back_populates="appointments")
+    master: Mapped["MasterORM"] = relationship(back_populates="appointments")
+    service: Mapped["ServiceORM"] = relationship(back_populates="appointments")

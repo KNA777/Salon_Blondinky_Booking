@@ -22,9 +22,6 @@ def get_redis(request: Request) -> Redis:
     return request.app.state.redis
 
 
-
-
-
 # Annotated-алиасы: в обработчиках пишем `session: SessionDep` вместо длинного Depends(...).
 # Заодно в тестах эти зависимости легко подменить (см. tests/test_health.py).
 DBDep = Annotated[DBManager, Depends(get_session)]

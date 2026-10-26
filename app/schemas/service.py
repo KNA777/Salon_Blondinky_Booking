@@ -13,7 +13,7 @@ class ServiceCreate(ServiceBase):
     pass
 
 
-class ServiceUpdate:
+class ServiceUpdate(BaseModel):
     name: str | None = None
     duration_minutes: int | None = None
     price: Decimal | None = None

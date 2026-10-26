@@ -4,13 +4,13 @@ from typing import TYPE_CHECKING
 from sqlalchemy import CheckConstraint, ForeignKey, SmallInteger, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import BaseORM
 
 if TYPE_CHECKING:
-    from app.models.master import Master
+    from app.models.master import MasterORM
 
 
-class WorkingHour(Base):
+class WorkingHourORM(BaseORM):
     """Один рабочий интервал мастера в определённый день недели.
 
     Расписание — это повторяющаяся недельная сетка. Обеденный перерыв не хранится отдельно:
@@ -39,4 +39,4 @@ class WorkingHour(Base):
     start_time: Mapped[time] = mapped_column(Time)
     end_time: Mapped[time] = mapped_column(Time)
 
-    master: Mapped["Master"] = relationship(back_populates="working_hours")
+    master: Mapped["MasterORM"] = relationship(back_populates="working_hours")

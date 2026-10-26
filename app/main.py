@@ -1,13 +1,15 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api import main_router
 from app.api.health import router as health_router
 from app.core.config import get_settings
-from app.api import main_router
+from app.core.exceptions import NotFoundError
 
 
 @asynccontextmanager
@@ -39,6 +41,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Salon Booking", lifespan=lifespan)
+
+
+@app.exception_handler(NotFoundError)
+async def not_found_exception_handler(request: Request, exc: NotFoundError) -> JSONResponse:
+    """Превращает «объект не найден» в HTTP 404, а не в 500."""
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
 app.include_router(health_router)
 app.include_router(main_router)
-

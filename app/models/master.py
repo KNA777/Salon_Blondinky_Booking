@@ -3,17 +3,17 @@ from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, String, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, CreatedAtMixin
+from app.models.base import BaseORM, CreatedAtMixin
 
 # Эти импорты нужны только для подсказок типов. Если импортировать модели друг в друга
 # по-настоящему, получится циклический импорт (Master -> Appointment -> Master).
 if TYPE_CHECKING:
-    from app.models.appointment import Appointment
-    from app.models.service import Service
-    from app.models.working_hour import WorkingHour
+    from app.models.appointment import AppointmentORM
+    from app.models.service import ServiceORM
+    from app.models.working_hour import WorkingHourORM
 
 
-class Master(CreatedAtMixin, Base):
+class MasterORM(CreatedAtMixin, BaseORM):
     __tablename__ = "masters"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -28,8 +28,8 @@ class Master(CreatedAtMixin, Base):
     is_active: Mapped[bool] = mapped_column(default=True, server_default=true())
 
     # secondary="master_services": связь «многие ко многим» идёт через эту таблицу.
-    services: Mapped[list["Service"]] = relationship(
+    services: Mapped[list["ServiceORM"]] = relationship(
         secondary="master_services", back_populates="masters"
     )
-    working_hours: Mapped[list["WorkingHour"]] = relationship(back_populates="master")
-    appointments: Mapped[list["Appointment"]] = relationship(back_populates="master")
+    working_hours: Mapped[list["WorkingHourORM"]] = relationship(back_populates="master")
+    appointments: Mapped[list["AppointmentORM"]] = relationship(back_populates="master")

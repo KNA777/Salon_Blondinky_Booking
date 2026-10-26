@@ -7,7 +7,7 @@ class MapperBase:
 
     @classmethod
     def from_alchemy_to_schema(cls, data):
-        return cls.schema.model_validate(data)
+        return cls.schema.model_validate(data, from_attributes=True)
 
     @classmethod
     def from_schema_to_alchemy(cls, data):

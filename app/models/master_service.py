@@ -1,6 +1,6 @@
 from sqlalchemy import Column, ForeignKey, Table
 
-from app.models.base import Base
+from app.models.base import BaseORM
 
 # Связующая таблица «мастер умеет услугу». Дополнительных полей у неё нет, поэтому это
 # просто Table, а не отдельный класс-модель. Если позже понадобятся поля (например,
@@ -13,7 +13,7 @@ from app.models.base import Base
 # с ними. Историю записей это не затрагивает: там внешние ключи с RESTRICT.
 master_services = Table(
     "master_services",
-    Base.metadata,
+    BaseORM.metadata,
     Column("master_id", ForeignKey("masters.id", ondelete="CASCADE"), primary_key=True),
     Column("service_id", ForeignKey("services.id", ondelete="CASCADE"), primary_key=True),
 )

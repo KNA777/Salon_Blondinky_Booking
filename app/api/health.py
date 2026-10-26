@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 
-from app.api.deps import RedisDep, DBDep
+from app.api.deps import DBDep, RedisDep
 
 router = APIRouter(tags=["health"])
 

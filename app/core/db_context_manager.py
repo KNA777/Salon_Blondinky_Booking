@@ -1,8 +1,9 @@
+from app.patterns.repository.masters import MasterRepository
 from app.patterns.repository.services import ServiceRepository
+from app.patterns.repository.working_hours import WorkingHourRepository
 
 
 class DBManager:
-
     def __init__(self, session):
         self.session_factory = session
 
@@ -10,6 +11,8 @@ class DBManager:
         self.session = self.session_factory()
 
         self.services = ServiceRepository(self.session)
+        self.masters = MasterRepository(self.session)
+        self.working_hours = WorkingHourRepository(self.session)
 
         return self
 

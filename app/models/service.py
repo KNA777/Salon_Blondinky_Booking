@@ -4,14 +4,14 @@ from typing import TYPE_CHECKING
 from sqlalchemy import CheckConstraint, Numeric, String, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import BaseORM
 
 if TYPE_CHECKING:
-    from app.models.appointment import Appointment
-    from app.models.master import Master
+    from app.models.appointment import AppointmentORM
+    from app.models.master import MasterORM
 
 
-class Service(Base):
+class ServiceORM(BaseORM):
     __tablename__ = "services"
     # CHECK-ограничения: БД сама не даст сохранить услугу с нулевой длительностью
     # или отрицательной ценой, даже если ошибка проскочит мимо кода приложения.
@@ -28,7 +28,7 @@ class Service(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     is_active: Mapped[bool] = mapped_column(default=True, server_default=true())
 
-    masters: Mapped[list["Master"]] = relationship(
+    masters: Mapped[list["MasterORM"]] = relationship(
         secondary="master_services", back_populates="services"
     )
-    appointments: Mapped[list["Appointment"]] = relationship(back_populates="service")
+    appointments: Mapped[list["AppointmentORM"]] = relationship(back_populates="service")

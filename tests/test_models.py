@@ -2,13 +2,13 @@
 
 from sqlalchemy.orm import configure_mappers
 
-from app.models import Base
+from app.models import BaseORM
 
 
 def test_all_tables_registered():
     # Если новую модель забыли импортировать в app/models/__init__.py, она не попадёт
     # в metadata, и этот тест упадёт.
-    assert set(Base.metadata.tables) == {
+    assert set(BaseORM.metadata.tables) == {
         "masters",
         "services",
         "master_services",

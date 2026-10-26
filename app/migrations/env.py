@@ -12,7 +12,7 @@ from alembic import context
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from app.core.config import get_settings  # noqa: E402
-from app.models import Base  # noqa: E402
+from app.models import BaseORM  # noqa: E402
 
 config = context.config
 
@@ -22,7 +22,7 @@ if config.config_file_name is not None:
 
 # Metadata, по которой autogenerate сравнивает модели с базой.
 # Все модели в неё уже зарегистрированы: app/models/__init__.py импортирует каждую.
-target_metadata = Base.metadata
+target_metadata = BaseORM.metadata
 
 
 def run_migrations_offline() -> None:

@@ -14,7 +14,7 @@ NAMING_CONVENTION = {
 }
 
 
-class Base(DeclarativeBase):
+class BaseORM(DeclarativeBase):
     """Общий родитель всех моделей. Именно в Base.metadata хранится описание всех таблиц:
     по нему Alembic строит миграции."""
 
