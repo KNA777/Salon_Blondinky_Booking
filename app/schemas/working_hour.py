@@ -1,14 +1,12 @@
 from datetime import time
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 
 class WorkingHourBase(BaseModel):
-    """Рабочий интервал: день недели и «настенное» время салона (Time без часового пояса)."""
-
-    weekday: int = Field(ge=0, le=6)  # 0 = понедельник, 6 = воскресенье
-    start_time: time
-    end_time: time
+    weekday: int = Field(ge=0, le=6)
+    start_time: time = Field(description="Время начала (ЧЧ:ММ)")
+    end_time: time = Field(description="Время окончания (ЧЧ:ММ)")
 
     @model_validator(mode="after")
     def check_end_after_start(self) -> "WorkingHourBase":
@@ -18,7 +16,7 @@ class WorkingHourBase(BaseModel):
 
 
 class WorkingHourCreate(WorkingHourBase):
-    pass
+    pass  # ← теперь нет сериализатора, model_dump() вернёт time
 
 
 class WorkingHourUpdate(BaseModel):
@@ -42,3 +40,7 @@ class WorkingHourOut(WorkingHourBase):
     master_id: int
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("start_time", "end_time")  # ← сериализатор только здесь
+    def serialize_time(self, value: time) -> str:
+        return value.strftime("%H:%M")
