@@ -11,7 +11,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 # Корень проекта должен быть в sys.path, чтобы импорт `from app.*` работал при любом
@@ -22,8 +22,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from app.bot.handlers import router  # noqa: E402  (sys.path задаётся выше)
-from app.bot.middlewares import DbSessionMiddleware  # noqa: E402
+from app.bot.dispatcher import build_dispatcher  # noqa: E402
+from app.bot.storage import InMemoryBookingStorage  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 
 
@@ -47,10 +47,8 @@ async def main() -> None:
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     bot = Bot(token=token)
-    dp = Dispatcher()
-    dp.include_router(router)
-    # Открывать сессию БД на каждый апдейт и закрывать её после обработки.
-    dp.update.middleware(DbSessionMiddleware(session_factory))
+    # В polling-режиме состояние диалога хранится в памяти (один процесс).
+    dp = build_dispatcher(bot, session_factory, InMemoryBookingStorage())
 
     # Простое long polling. Пропускать уже накопившиеся апдейты, чтобы после долгого простоя
     # бот не обрабатывал старые сообщения.

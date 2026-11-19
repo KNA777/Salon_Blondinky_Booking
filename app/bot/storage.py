@@ -1,13 +1,21 @@
 """Хранилище состояния и накопленных данных записи для каждого пользователя.
 
-Реализация на словаре в памяти — простая и подходит для одного процесса бота
-(long polling). Когда бот переедет на webhook с несколькими воркерами (задача 8),
-это хранилище нужно будет заменить на Redis, чтобы состояние переживало перезапуск
-и было доступно из любого воркера. Интерфейс (get_state/set_state/save/reset)
-оставлен так, чтобы замена реализации не потребовала менять handlers/fsm.
+Есть две реализации одного интерфейса — все методы асинхронные, чтобы Redis-версия
+(которая делает сетевые вызовы) и in-memory версия были взаимозаменяемы:
+
+1. InMemoryBookingStorage — словарь в памяти. Подходит для одного процесса бота
+   (long polling). Состояние живёт, пока процесс работает.
+
+2. RedisBookingStorage — то же самое, но поверх Redis. Нужен для webhook-режима:
+   FastAPI может обслуживать запросы несколькими воркерами, и состояние пользователя
+   должно быть доступно из любого воркера, а также переживать перезапуск.
 """
 
+import json
 from dataclasses import dataclass
+from typing import Protocol
+
+from redis.asyncio import Redis
 
 from app.bot.states import BookingState
 
@@ -23,29 +31,47 @@ class BookingContext:
     day: str | None = None  # ISO-дата (YYYY-MM-DD)
 
 
+class BookingStorage(Protocol):
+    """Общий интерфейс хранилищ состояния диалога (все методы — асинхронные)."""
+
+    async def get_state(self, user_id: int) -> BookingState: ...
+
+    async def set_state(self, user_id: int, state: BookingState) -> None: ...
+
+    async def get_context(self, user_id: int) -> BookingContext: ...
+
+    async def save(self, user_id: int, **fields) -> None: ...
+
+    async def reset(self, user_id: int) -> None: ...
+
+
 class InMemoryBookingStorage:
-    """Простое in-memory хранилище: словарь user_id -> BookingContext."""
+    """In-memory хранилище: словарь user_id -> BookingContext.
+
+    Методы объявлены async для единообразия с Redis-версией, но внутри обращаются к
+    обычному словарю без ожиданий реального I/O.
+    """
 
     def __init__(self) -> None:
         self._data: dict[int, BookingContext] = {}
 
-    def get_state(self, user_id: int) -> BookingState:
+    async def get_state(self, user_id: int) -> BookingState:
         ctx = self._data.get(user_id)
         return ctx.state if ctx is not None else BookingState.START
 
-    def set_state(self, user_id: int, state: BookingState) -> None:
+    async def set_state(self, user_id: int, state: BookingState) -> None:
         self._ensure(user_id).state = state
 
-    def get_context(self, user_id: int) -> BookingContext:
+    async def get_context(self, user_id: int) -> BookingContext:
         return self._ensure(user_id)
 
-    def save(self, user_id: int, **fields) -> None:
+    async def save(self, user_id: int, **fields) -> None:
         """Обновить одно или несколько полей контекста записи."""
         ctx = self._ensure(user_id)
         for name, value in fields.items():
             setattr(ctx, name, value)
 
-    def reset(self, user_id: int) -> None:
+    async def reset(self, user_id: int) -> None:
         """Сбросить диалог: state -> START и все накопленные данные очищаются."""
         self._data[user_id] = BookingContext(state=BookingState.START)
 
@@ -55,5 +81,73 @@ class InMemoryBookingStorage:
         return self._data[user_id]
 
 
-# Единый экземпляр на процесс бота. В webhook-версии будет создаваться из Redis.
-storage = InMemoryBookingStorage()
+class RedisBookingStorage:
+    """Хранилище состояния диалога в Redis (для webhook с несколькими воркерами).
+
+    Каждый пользователь — один ключ вида `booking:{user_id}`, значение — контекст
+    BookingContext, сериализованный в JSON.
+    """
+
+    def __init__(self, redis: Redis, key_prefix: str = "booking") -> None:
+        self._redis = redis
+        self._prefix = key_prefix
+
+    def _key(self, user_id: int) -> str:
+        return f"{self._prefix}:{user_id}"
+
+    async def get_state(self, user_id: int) -> BookingState:
+        ctx = await self.get_context(user_id)
+        return ctx.state
+
+    async def set_state(self, user_id: int, state: BookingState) -> None:
+        ctx = await self.get_context(user_id)
+        ctx.state = state
+        await self._write(user_id, ctx)
+
+    async def get_context(self, user_id: int) -> BookingContext:
+        raw = await self._redis.get(self._key(user_id))
+        if raw is None:
+            return BookingContext()
+        return self._deserialize(raw)
+
+    async def save(self, user_id: int, **fields) -> None:
+        ctx = await self.get_context(user_id)
+        for name, value in fields.items():
+            setattr(ctx, name, value)
+        await self._write(user_id, ctx)
+
+    async def reset(self, user_id: int) -> None:
+        await self._redis.set(self._key(user_id), self._serialize(BookingContext()))
+
+    async def _write(self, user_id: int, ctx: BookingContext) -> None:
+        await self._redis.set(self._key(user_id), self._serialize(ctx))
+
+    @staticmethod
+    def _serialize(ctx: BookingContext) -> str:
+        return json.dumps(
+            {
+                "state": ctx.state.value,
+                "client_id": ctx.client_id,
+                "service_id": ctx.service_id,
+                "master_id": ctx.master_id,
+                "day": ctx.day,
+            }
+        )
+
+    @staticmethod
+    def _deserialize(raw: str) -> BookingContext:
+        data: dict = json.loads(raw)
+        return BookingContext(
+            state=BookingState(data.get("state", BookingState.START.value)),
+            client_id=data.get("client_id"),
+            service_id=data.get("service_id"),
+            master_id=data.get("master_id"),
+            day=data.get("day"),
+        )
+
+
+# Единый экземпляр на процесс бота (long polling). В webhook-версии используется
+# RedisBookingStorage, создаваемый в lifespan FastAPI.
+storage: BookingStorage = InMemoryBookingStorage()
+
+

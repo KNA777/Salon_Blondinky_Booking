@@ -38,4 +38,6 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# async def test_* автоматически оборачиваются pytest-asyncio (без явных @pytest.mark.asyncio).
+asyncio_mode = "auto"
 

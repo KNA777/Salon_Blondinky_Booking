@@ -34,10 +34,38 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         decode_responses=True,  # получаем строки (str), а не байты
     )
 
+    # Webhook-режим: если задан webhook_url и токен, поднимаем Dispatcher внутри FastAPI.
+    # Состояние FSM при этом хранится в Redis (см. RedisBookingStorage) — оно должно быть
+    # доступно из любого воркера, а не только из одного процесса.
+    app.state.bot = None
+    app.state.dispatcher = None
+    if settings.use_webhook:
+        await _setup_webhook(app, settings)
+
     yield
 
+    if app.state.bot is not None:
+        await app.state.bot.session.close()
     await app.state.redis.aclose()
     await engine.dispose()
+
+
+async def _setup_webhook(app: FastAPI, settings) -> None:
+    """Собирает Bot + Dispatcher для webhook-режима и кладёт их в app.state."""
+    from aiogram import Bot
+
+    from app.bot.dispatcher import build_dispatcher
+    from app.bot.storage import RedisBookingStorage
+
+    session_factory = app.state.session_factory
+    storage = RedisBookingStorage(app.state.redis)
+
+    bot = Bot(token=settings.bot_token)
+    dispatcher = build_dispatcher(bot, session_factory, storage)
+
+    app.state.bot = bot
+    app.state.dispatcher = dispatcher
+    app.state.webhook_storage = storage
 
 
 app = FastAPI(title="Salon Booking", lifespan=lifespan)

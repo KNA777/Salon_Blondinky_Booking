@@ -13,7 +13,7 @@ from aiogram.types import CallbackQuery, Message
 
 from app.bot import fsm
 from app.bot.states import BookingState
-from app.bot.storage import storage
+from app.bot.storage import BookingStorage
 from app.core.db_context_manager import DBManager
 from app.schemas.client import ClientCreate
 
@@ -24,16 +24,16 @@ router = Router(name="booking")
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, db: DBManager) -> None:
+async def cmd_start(message: Message, db: DBManager, storage: BookingStorage) -> None:
     """Начало: регистрируем/находим клиента по telegram_id и предлагаем выбрать услугу."""
     user_id = message.from_user.id
     client = await db.clients.upsert_by_telegram_id(
         ClientCreate(name=message.from_user.full_name or "Клиент", telegram_id=user_id)
     )
 
-    storage.reset(user_id)
-    storage.set_state(user_id, BookingState.CHOOSE_SERVICE)
-    storage.save(user_id, client_id=client.id)
+    await storage.reset(user_id)
+    await storage.set_state(user_id, BookingState.CHOOSE_SERVICE)
+    await storage.save(user_id, client_id=client.id)
 
     keyboard = await fsm.services_keyboard(db)
     await message.answer("Запишемся к мастеру? Выберите услугу 👇", reply_markup=keyboard)
@@ -50,8 +50,8 @@ async def cmd_help(message: Message) -> None:
 
 
 @router.message(Command("cancel"))
-async def cmd_cancel(message: Message) -> None:
-    storage.reset(message.from_user.id)
+async def cmd_cancel(message: Message, storage: BookingStorage) -> None:
+    await storage.reset(message.from_user.id)
     await message.answer("Запись отменена. Напишите /start, чтобы начать заново.")
 
 
@@ -63,18 +63,18 @@ def _telegram_id_from_query(query: CallbackQuery) -> int:
 
 
 @router.callback_query(F.data == "cancel")
-async def cb_cancel(query: CallbackQuery) -> None:
-    storage.reset(_telegram_id_from_query(query))
+async def cb_cancel(query: CallbackQuery, storage: BookingStorage) -> None:
+    await storage.reset(_telegram_id_from_query(query))
     await query.message.edit_text("Запись отменена. Напишите /start, чтобы начать заново.")
     await query.answer()
 
 
 @router.callback_query(F.data.startswith("service:"))
-async def cb_service(query: CallbackQuery, db: DBManager) -> None:
+async def cb_service(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
     service_id = int(query.data.split(":", 1)[1])
     user_id = _telegram_id_from_query(query)
-    storage.set_state(user_id, BookingState.CHOOSE_MASTER)
-    storage.save(user_id, service_id=service_id)
+    await storage.set_state(user_id, BookingState.CHOOSE_MASTER)
+    await storage.save(user_id, service_id=service_id)
 
     keyboard = await fsm.masters_keyboard(db, service_id)
     await query.message.edit_text("Теперь выберите мастера 👇", reply_markup=keyboard)
@@ -82,11 +82,11 @@ async def cb_service(query: CallbackQuery, db: DBManager) -> None:
 
 
 @router.callback_query(F.data.startswith("master:"))
-async def cb_master(query: CallbackQuery) -> None:
+async def cb_master(query: CallbackQuery, storage: BookingStorage) -> None:
     master_id = int(query.data.split(":", 1)[1])
     user_id = _telegram_id_from_query(query)
-    storage.set_state(user_id, BookingState.CHOOSE_DATE)
-    storage.save(user_id, master_id=master_id)
+    await storage.set_state(user_id, BookingState.CHOOSE_DATE)
+    await storage.save(user_id, master_id=master_id)
 
     keyboard = fsm.day_keyboard()
     await query.message.edit_text("Выберите дату 👇", reply_markup=keyboard)
@@ -94,13 +94,13 @@ async def cb_master(query: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.startswith("day:"))
-async def cb_day(query: CallbackQuery, db: DBManager) -> None:
+async def cb_day(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
     day_text = query.data.split(":", 1)[1]
     user_id = _telegram_id_from_query(query)
-    storage.set_state(user_id, BookingState.CHOOSE_SLOT)
-    storage.save(user_id, day=day_text)
+    await storage.set_state(user_id, BookingState.CHOOSE_SLOT)
+    await storage.save(user_id, day=day_text)
 
-    ctx = storage.get_context(user_id)
+    ctx = await storage.get_context(user_id)
     day = date.fromisoformat(day_text)
     keyboard = await fsm.slots_keyboard(db, ctx.master_id, ctx.service_id, day)
     await query.message.edit_text("Свободное время 👇", reply_markup=keyboard)
@@ -108,9 +108,9 @@ async def cb_day(query: CallbackQuery, db: DBManager) -> None:
 
 
 @router.callback_query(F.data.startswith("slot:"))
-async def cb_slot(query: CallbackQuery, db: DBManager) -> None:
+async def cb_slot(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
     user_id = _telegram_id_from_query(query)
-    ctx = storage.get_context(user_id)
+    ctx = await storage.get_context(user_id)
     starts_at = datetime.fromisoformat(query.data.split(":", 1)[1])
 
     await fsm.create_appointment(
@@ -123,34 +123,35 @@ async def cb_slot(query: CallbackQuery, db: DBManager) -> None:
 
     text = await fsm.confirm_text(client.name, master.name, service.name, starts_at)
 
-    storage.set_state(user_id, BookingState.DONE)
+    await storage.set_state(user_id, BookingState.DONE)
     await query.message.edit_text(text)
     await query.answer()
 
 
 @router.callback_query(F.data == "back_to_service")
-async def cb_back_to_service(query: CallbackQuery, db: DBManager) -> None:
+async def cb_back_to_service(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
     user_id = _telegram_id_from_query(query)
-    storage.set_state(user_id, BookingState.CHOOSE_SERVICE)
+    await storage.set_state(user_id, BookingState.CHOOSE_SERVICE)
     keyboard = await fsm.services_keyboard(db)
     await query.message.edit_text("Выберите услугу 👇", reply_markup=keyboard)
     await query.answer()
 
 
 @router.callback_query(F.data == "back_to_master")
-async def cb_back_to_master(query: CallbackQuery, db: DBManager) -> None:
+async def cb_back_to_master(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
     user_id = _telegram_id_from_query(query)
-    ctx = storage.get_context(user_id)
-    storage.set_state(user_id, BookingState.CHOOSE_MASTER)
+    ctx = await storage.get_context(user_id)
+    await storage.set_state(user_id, BookingState.CHOOSE_MASTER)
     keyboard = await fsm.masters_keyboard(db, ctx.service_id)
     await query.message.edit_text("Выберите мастера 👇", reply_markup=keyboard)
     await query.answer()
 
 
 @router.callback_query(F.data == "back_to_date")
-async def cb_back_to_date(query: CallbackQuery) -> None:
+async def cb_back_to_date(query: CallbackQuery, storage: BookingStorage) -> None:
     user_id = _telegram_id_from_query(query)
-    storage.set_state(user_id, BookingState.CHOOSE_DATE)
+    await storage.set_state(user_id, BookingState.CHOOSE_DATE)
     keyboard = fsm.day_keyboard()
     await query.message.edit_text("Выберите дату 👇", reply_markup=keyboard)
     await query.answer()
+

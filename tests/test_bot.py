@@ -22,33 +22,35 @@ from app.bot.storage import InMemoryBookingStorage
 # --- хранилище состояний -----------------------------------------------------
 
 
-def test_storage_defaults_to_start():
+async def test_storage_defaults_to_start():
     s = InMemoryBookingStorage()
-    assert s.get_state(123) == BookingState.START
+    assert await s.get_state(123) == BookingState.START
 
 
-def test_storage_set_and_get_state():
+async def test_storage_set_and_get_state():
     s = InMemoryBookingStorage()
-    s.set_state(123, BookingState.CHOOSE_SERVICE)
-    assert s.get_state(123) == BookingState.CHOOSE_SERVICE
+    await s.set_state(123, BookingState.CHOOSE_SERVICE)
+    assert await s.get_state(123) == BookingState.CHOOSE_SERVICE
 
 
-def test_storage_save_fields_and_reset():
+async def test_storage_save_fields_and_reset():
     s = InMemoryBookingStorage()
-    s.save(123, service_id=5, master_id=7)
-    assert s.get_context(123).service_id == 5
-    assert s.get_context(123).master_id == 7
-    s.reset(123)
-    assert s.get_state(123) == BookingState.START
-    assert s.get_context(123).service_id is None
+    await s.save(123, service_id=5, master_id=7)
+    ctx = await s.get_context(123)
+    assert ctx.service_id == 5
+    assert ctx.master_id == 7
+    await s.reset(123)
+    assert await s.get_state(123) == BookingState.START
+    ctx = await s.get_context(123)
+    assert ctx.service_id is None
 
 
-def test_storage_isolates_users():
+async def test_storage_isolates_users():
     s = InMemoryBookingStorage()
-    s.set_state(1, BookingState.CHOOSE_MASTER)
-    s.set_state(2, BookingState.CHOOSE_DATE)
-    assert s.get_state(1) == BookingState.CHOOSE_MASTER
-    assert s.get_state(2) == BookingState.CHOOSE_DATE
+    await s.set_state(1, BookingState.CHOOSE_MASTER)
+    await s.set_state(2, BookingState.CHOOSE_DATE)
+    assert await s.get_state(1) == BookingState.CHOOSE_MASTER
+    assert await s.get_state(2) == BookingState.CHOOSE_DATE
 
 
 # --- чистые помощники fsm ----------------------------------------------------

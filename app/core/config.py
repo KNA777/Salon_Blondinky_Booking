@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     # FastAPI стартует и без него. Бот при отсутствии токена падает с понятной ошибкой.
     bot_token: str | None = None
 
+    # Webhook-режим. Если задан url, бот принимает апдейты через webhook (не polling).
+    # Валидация входящих апдейтов — по секрету в заголовке X-Telegram-Bot-Api-Secret-Token.
+    webhook_url: str | None = None
+    # Секрет, которым Telegram подписывает webhook-запросы; сверяется с env-переменной.
+    webhook_secret: str | None = None
+
+    @property
+    def use_webhook(self) -> bool:
+        """True, если бот настроен на webhook (задан webhook_url и токен есть)."""
+        return bool(self.webhook_url and self.bot_token)
+
     @property
     def database_url(self) -> URL:
         # URL.create сам экранирует спецсимволы в пароле (@, :, / и т.д.).

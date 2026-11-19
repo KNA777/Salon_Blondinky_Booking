@@ -12,6 +12,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.bot.storage import BookingStorage
 from app.core.db_context_manager import DBManager
 
 
@@ -28,3 +29,23 @@ class DbSessionMiddleware(BaseMiddleware):
         async with DBManager(self.session_factory) as db_manager:
             data["db"] = db_manager
             return await handler(event, data)
+
+
+class StorageMiddleware(BaseMiddleware):
+    """Подставляет активное хранилище FSM-состояний в `data["storage"]`.
+
+    В polling хранилище — in-memory, в webhook — Redis (одинаковый интерфейс),
+    поэтому хендлеры не знают, какая реализация используется.
+    """
+
+    def __init__(self, storage: BookingStorage) -> None:
+        self.storage = storage
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        data["storage"] = self.storage
+        return await handler(event, data)
