@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.api import main_router
 from app.api.health import router as health_router
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import InvalidTransitionError, NotFoundError
 
 
 @asynccontextmanager
@@ -47,6 +47,14 @@ app = FastAPI(title="Salon Booking", lifespan=lifespan)
 async def not_found_exception_handler(request: Request, exc: NotFoundError) -> JSONResponse:
     """Превращает «объект не найден» в HTTP 404, а не в 500."""
     return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(InvalidTransitionError)
+async def invalid_transition_exception_handler(
+    request: Request, exc: InvalidTransitionError
+) -> JSONResponse:
+    """Запрещённый переход статуса -> HTTP 409 Conflict."""
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 app.include_router(health_router)

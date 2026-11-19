@@ -21,9 +21,23 @@ class AppointmentCreate(AppointmentBase):
 
 
 class AppointmentUpdate(BaseModel):
+    """Изменение записи: только время/цена, которые можно менять свободно.
+
+    status намеренно отсутствует: статус меняется ТОЛЬКО через машину переходов
+    (эндпоинт POST /appointments/{id}/status), чтобы запрещённые переходы не могли
+    проскочить через обычный PATCH.
+    """
+
     starts_at: datetime | None = None
     ends_at: datetime | None = None
-    status: AppointmentStatusEnum | None = None
+    price: Decimal | None = None
+
+
+class AppointmentStatusUpdate(BaseModel):
+    """Смена статуса записи. Отдельная схема, потому что статус меняют только через машину
+    переходов (валидация допустимого графа), а не напрямую через AppointmentUpdate."""
+
+    status: AppointmentStatusEnum
 
 
 class AppointmentOut(AppointmentBase):
