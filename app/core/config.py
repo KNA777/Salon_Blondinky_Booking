@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
 
+    # Часовой пояс салона. «Настенное» время в расписании относится к этому поясу.
+    salon_timezone: str = "Europe/Moscow"
+
     @property
     def database_url(self) -> URL:
         # URL.create сам экранирует спецсимволы в пароле (@, :, / и т.д.).
