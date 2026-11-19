@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     postgres_host: str
     postgres_port: int
 
-    redis_host: str = "localhost"
-    redis_port: int = 6379
+    redis_host: str
+    redis_port: int
 
     # Часовой пояс салона. «Настенное» время в расписании относится к этому поясу.
     salon_timezone: str = "Europe/Moscow"
