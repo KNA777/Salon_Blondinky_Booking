@@ -39,3 +39,12 @@ class MasterRepository(BaseRepository):
             query = query.where(self.model.is_active)
         data = await self.session.execute(query)
         return [self.mapper.from_alchemy_to_schema(el) for el in data.scalars().all()]
+
+    async def get_one_with_services(self, master_id: int):
+        """Мастер по id вместе с услугами (для вывода имени и состава услуг)."""
+        query = (
+            select(self.model).options(selectinload(self.model.services)).filter_by(id=master_id)
+        )
+        result = await self.session.execute(query)
+        data = result.scalars().one()
+        return self.mapper.from_alchemy_to_schema(data)

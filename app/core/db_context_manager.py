@@ -1,3 +1,5 @@
+from app.patterns.repository.appointments import AppointmentRepository
+from app.patterns.repository.clients import ClientRepository
 from app.patterns.repository.masters import MasterRepository
 from app.patterns.repository.services import ServiceRepository
 from app.patterns.repository.working_hours import WorkingHourRepository
@@ -13,6 +15,8 @@ class DBManager:
         self.services = ServiceRepository(self.session)
         self.masters = MasterRepository(self.session)
         self.working_hours = WorkingHourRepository(self.session)
+        self.clients = ClientRepository(self.session)
+        self.appointments = AppointmentRepository(self.session)
 
         return self
 
