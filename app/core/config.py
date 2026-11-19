@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # Часовой пояс салона. «Настенное» время в расписании относится к этому поясу.
     salon_timezone: str = "Europe/Moscow"
 
+    # Токен Telegram-бота. Обязателен только для процесса бота, поэтому необязательный:
+    # FastAPI стартует и без него. Бот при отсутствии токена падает с понятной ошибкой.
+    bot_token: str | None = None
+
     @property
     def database_url(self) -> URL:
         # URL.create сам экранирует спецсимволы в пароле (@, :, / и т.д.).
