@@ -1,15 +1,24 @@
 from fastapi import APIRouter
 
 from app.api.deps import DBDep
-from app.schemas.appointment import AppointmentCreate, AppointmentStatusUpdate, AppointmentUpdate
+from app.schemas.appointment import (
+    AppointmentCreate,
+    AppointmentReschedule,
+    AppointmentStatusUpdate,
+    AppointmentUpdate,
+)
 
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
 
 
 @router.post("")
 async def add_appointment(db: DBDep, data: AppointmentCreate):
-    """Создать запись. Статус по умолчанию created (см. server_default в модели)."""
-    return await db.appointments.create(data)
+    """Создать запись. Статус по умолчанию created (см. server_default в модели).
+
+    Перед вставкой проверяем, что слот свободен (защита от двойной записи); занятый
+    слот вернёт HTTP 409.
+    """
+    return await db.appointments.create_with_conflict_check(data)
 
 
 @router.get("")
@@ -44,3 +53,15 @@ async def change_appointment_status(
     Запрещённый переход (например, completed -> created) вернёт HTTP 409.
     """
     return await db.appointments.transition_status(appointment_id, data.status)
+
+
+@router.post("/{appointment_id}/cancel")
+async def cancel_appointment(db: DBDep, appointment_id: int):
+    """Клиент отменяет свою запись: статус -> cancelled (через машину переходов)."""
+    return await db.appointments.cancel(appointment_id)
+
+
+@router.post("/{appointment_id}/reschedule")
+async def reschedule_appointment(db: DBDep, appointment_id: int, data: AppointmentReschedule):
+    """Админ переносит запись на другой слот (проверка конфликта со слотами)."""
+    return await db.appointments.reschedule(appointment_id, data.starts_at, data.ends_at)

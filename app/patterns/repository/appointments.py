@@ -1,9 +1,10 @@
 from sqlalchemy import select, update
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, SlotConflictError
 from app.models import AppointmentORM, AppointmentStatusEnum
 from app.patterns.mapper.appointments import AppointmentMapper
 from app.patterns.repository.base import BaseRepository
+from app.services.booking_conflict import BLOCKING_STATUSES, overlaps
 from app.services.status_machine import validate_transition
 
 
@@ -24,6 +25,38 @@ class AppointmentRepository(BaseRepository):
             select(self.model).filter_by(master_id=master_id)
         )
         return [self.mapper.from_alchemy_to_schema(el) for el in result.scalars().all()]
+
+    async def _conflicting_appointments(
+        self, master_id: int, starts_at, ends_at
+    ) -> list[AppointmentORM]:
+        """Записи того же мастера в блокирующих статусах, пересекающиеся с интервалом.
+
+        Выборка происходит по мастеру и статусам; точное пересечение проверяем в Python
+        через overlaps(). Этого достаточно для быстрой проверки до вставки.
+        """
+        result = await self.session.execute(
+            select(self.model).where(
+                self.model.master_id == master_id,
+                self.model.status.in_(BLOCKING_STATUSES),
+                self.model.starts_at < ends_at,
+                self.model.ends_at > starts_at,
+            )
+        )
+        return list(result.scalars().all())
+
+    async def create_with_conflict_check(self, data):
+        """Создать запись, проверив, что слот свободен (защита от двойной записи).
+
+        Проверяем пересечение с уже существующими записями мастера. Если слот занят,
+        кидаем SlotConflictError (HTTP 409) до вставки. Саму вставку защищает также
+        exclusion constraint в БД (миграция a1b2c3d4e5f6) на случай гонки.
+        """
+        existing = await self._conflicting_appointments(
+            data.master_id, data.starts_at, data.ends_at
+        )
+        if any(overlaps(data.starts_at, data.ends_at, a.starts_at, a.ends_at) for a in existing):
+            raise SlotConflictError()
+        return await self.create(data)
 
     async def transition_status(
         self, appointment_id: int, next_status: AppointmentStatusEnum
@@ -46,6 +79,44 @@ class AppointmentRepository(BaseRepository):
             update(self.model)
             .filter_by(id=appointment_id)
             .values(status=next_status)
+            .returning(self.model)
+        )
+        result = await self.session.execute(stmt)
+        updated = result.scalars().one()
+        await self.session.commit()
+        return self.mapper.from_alchemy_to_schema(updated)
+
+    async def cancel(self, appointment_id: int):
+        """Отменить запись (клиент отменяет свою запись)."""
+        return await self.transition_status(appointment_id, AppointmentStatusEnum.CANCELLED)
+
+    async def reschedule(self, appointment_id: int, starts_at, ends_at):
+        """Перенести запись на новое время (админ).
+
+        Проверяем, что новое время не конфликтует с другими записями того же мастера
+        (защита от двойной записи), и меняем starts_at/ends_at.
+        """
+        result = await self.session.execute(
+            select(self.model).filter_by(id=appointment_id)
+        )
+        appointment = result.scalars().first()
+        if appointment is None:
+            raise NotFoundError(f"{self.model.__tablename__} not found")
+
+        conflicts = await self._conflicting_appointments(
+            appointment.master_id, starts_at, ends_at
+        )
+        # Исключаем саму переносимую запись из проверки.
+        others = [
+            a for a in conflicts if a.id != appointment_id and a.status in BLOCKING_STATUSES
+        ]
+        if any(overlaps(starts_at, ends_at, a.starts_at, a.ends_at) for a in others):
+            raise SlotConflictError()
+
+        stmt = (
+            update(self.model)
+            .filter_by(id=appointment_id)
+            .values(starts_at=starts_at, ends_at=ends_at)
             .returning(self.model)
         )
         result = await self.session.execute(stmt)

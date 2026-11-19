@@ -43,8 +43,8 @@ class FakeClients(FakeRepo):
 
 
 class FakeAppointments(FakeRepo):
-    async def create(self, data):
-        self.calls.append(("create", data.client_id))
+    async def create_with_conflict_check(self, data):
+        self.calls.append(("create_with_conflict_check", data.client_id))
         return {"id": 1, "status": "created"}
 
     async def get_bulk_by_client(self, client_id):
@@ -66,6 +66,14 @@ class FakeAppointments(FakeRepo):
     async def transition_status(self, appointment_id, status):
         self.calls.append(("transition_status", appointment_id, status))
         return {"id": appointment_id, "status": status.value}
+
+    async def cancel(self, appointment_id):
+        self.calls.append(("cancel", appointment_id))
+        return {"id": appointment_id, "status": "cancelled"}
+
+    async def reschedule(self, appointment_id, starts_at, ends_at):
+        self.calls.append(("reschedule", appointment_id))
+        return {"id": appointment_id, "status": "confirmed"}
 
 
 class FakeDBManager:
@@ -143,7 +151,7 @@ def test_post_appointment(client):
     response = client.post("/appointments", json=payload)
 
     assert response.status_code == 200
-    assert any(call[0] == "create" for call in appointments.calls)
+    assert any(call[0] == "create_with_conflict_check" for call in appointments.calls)
 
 
 def test_get_appointments_by_client(client):
@@ -185,3 +193,30 @@ def test_forbidden_status_transition_returns_409(client):
     response = client.post("/appointments/1/status", json={"status": "created"})
 
     assert response.status_code == 409
+
+
+# --- отмена и перенос (задача 10) ----------------------------------------------
+
+
+def test_cancel_appointment(client):
+    appointments = FakeAppointments()
+    _override(FakeDBManager(clients=FakeClients(), appointments=appointments))
+
+    response = client.post("/appointments/7/cancel")
+
+    assert response.status_code == 200
+    assert ("cancel", 7) in appointments.calls
+
+
+def test_reschedule_appointment(client):
+    appointments = FakeAppointments()
+    _override(FakeDBManager(clients=FakeClients(), appointments=appointments))
+
+    payload = {
+        "starts_at": "2026-11-21T11:00:00Z",
+        "ends_at": "2026-11-21T11:45:00Z",
+    }
+    response = client.post("/appointments/7/reschedule", json=payload)
+
+    assert response.status_code == 200
+    assert any(call[0] == "reschedule" for call in appointments.calls)

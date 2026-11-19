@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.api import main_router
 from app.api.health import router as health_router
 from app.core.config import get_settings
-from app.core.exceptions import InvalidTransitionError, NotFoundError
+from app.core.exceptions import InvalidTransitionError, NotFoundError, SlotConflictError
 
 
 @asynccontextmanager
@@ -82,6 +82,14 @@ async def invalid_transition_exception_handler(
     request: Request, exc: InvalidTransitionError
 ) -> JSONResponse:
     """Запрещённый переход статуса -> HTTP 409 Conflict."""
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(SlotConflictError)
+async def slot_conflict_exception_handler(
+    request: Request, exc: SlotConflictError
+) -> JSONResponse:
+    """Занятый слот (двойная запись) -> HTTP 409 Conflict."""
     return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 

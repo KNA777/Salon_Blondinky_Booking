@@ -40,6 +40,13 @@ class AppointmentStatusUpdate(BaseModel):
     status: AppointmentStatusEnum
 
 
+class AppointmentReschedule(BaseModel):
+    """Перенос записи на другой слот: новое время (конфликт со слотами проверяется)."""
+
+    starts_at: datetime
+    ends_at: datetime
+
+
 class AppointmentOut(AppointmentBase):
     id: int
     status: AppointmentStatusEnum

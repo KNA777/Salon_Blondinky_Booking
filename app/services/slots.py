@@ -22,20 +22,16 @@ from app.core.db_context_manager import DBManager
 from app.core.exceptions import NotFoundError
 from app.models import (
     AppointmentORM,
-    AppointmentStatusEnum,
     MasterORM,
     ServiceORM,
     WorkingHourORM,
     master_services,
 )
 from app.schemas.slot import FreeSlot, FreeSlotsOut
+from app.services.booking_conflict import BLOCKING_STATUSES
 
-# Только эти статусы занимают время мастера. CANCELLED, COMPLETED и NO_SHOW
-# не мешают появлению новых записей.
-BLOCKING_STATUSES = [
-    AppointmentStatusEnum.CREATED,
-    AppointmentStatusEnum.CONFIRMED,
-]
+# Только эти статусы (см. BLOCKING_STATUSES в booking_conflict) занимают время мастера.
+# CANCELLED, COMPLETED и NO_SHOW не мешают появлению новых записей.
 
 
 def _overlaps(a_start: datetime, a_end: datetime, b_start: datetime, b_end: datetime) -> bool:

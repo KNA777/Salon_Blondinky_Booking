@@ -155,7 +155,7 @@ async def create_appointment(
         ends_at=starts_at + timedelta(minutes=service.duration_minutes),
         price=service.price,
     )
-    created = await db.appointments.create(data)
+    created = await db.appointments.create_with_conflict_check(data)
     return created.id
 
 
