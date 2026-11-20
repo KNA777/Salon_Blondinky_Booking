@@ -50,11 +50,23 @@ async def main() -> None:
     # В polling-режиме состояние диалога хранится в памяти (один процесс).
     dp = build_dispatcher(bot, session_factory, InMemoryBookingStorage())
 
+    # Планировщик напоминаний (задача 13) работает в фоне рядом с polling.
+    from app.services.reminders import reminder_loop
+
+    reminder_stop = asyncio.Event()
+    reminder_task = asyncio.create_task(reminder_loop(session_factory, bot, reminder_stop))
+
     # Простое long polling. Пропускать уже накопившиеся апдейты, чтобы после долгого простоя
     # бот не обрабатывал старые сообщения.
     try:
         await dp.start_polling(bot, drop_pending_updates=True)
     finally:
+        reminder_stop.set()
+        reminder_task.cancel()
+        try:
+            await reminder_task
+        except asyncio.CancelledError:
+            pass
         await bot.session.close()
         await engine.dispose()
 

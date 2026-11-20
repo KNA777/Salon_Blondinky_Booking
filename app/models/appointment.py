@@ -67,6 +67,11 @@ class AppointmentORM(CreatedAtMixin, BaseORM):
 
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
+    # Маркеры уже отправленных напоминаний (задача 13). NULL — ещё не отправлено; значение —
+    # момент отправки. Служат одновременно и идемпотентностью (не шлём дважды), и аудитом.
+    reminded_24h_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    reminded_2h_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
     client: Mapped["ClientORM"] = relationship(back_populates="appointments")
     master: Mapped["MasterORM"] = relationship(back_populates="appointments")
     service: Mapped["ServiceORM"] = relationship(back_populates="appointments")

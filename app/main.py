@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -62,11 +63,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         logger.info("Режим webhook отключён (use_webhook=False). Бот не будет запущен в FastAPI.")
 
+    # --- Напоминания о записи ---
+    # Background-таск рассылки напоминаний (задача 13). Нужен экземпляр бота, поэтому
+    # запускаем только в webhook-режиме (в polling-режиме свой таск в app/bot/__main__.py).
+    app.state.reminder_stop = None
+    app.state.reminder_task = None
+    if app.state.bot is not None:
+        from app.services.reminders import reminder_loop
+
+        app.state.reminder_stop = asyncio.Event()
+        app.state.reminder_task = asyncio.create_task(
+            reminder_loop(app.state.session_factory, app.state.bot, app.state.reminder_stop)
+        )
+        logger.info("✅ Планировщик напоминаний запущен.")
+
     logger.info("🎉 Приложение готово к работе.")
     yield
 
     # --- Остановка ---
     logger.info("🛑 Остановка приложения: освобождение ресурсов...")
+
+    # Останавливаем планировщик напоминаний (если он был запущен).
+    if app.state.reminder_task is not None:
+        app.state.reminder_stop.set()
+        app.state.reminder_task.cancel()
+        try:
+            await app.state.reminder_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("✅ Планировщик напоминаний остановлен.")
 
     if app.state.bot is not None:
         logger.info("Закрытие сессии бота...")

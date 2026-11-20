@@ -1,4 +1,5 @@
 from sqlalchemy import select, update
+from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import NotFoundError, PermissionError, SlotConflictError
 from app.models import AppointmentORM, AppointmentStatusEnum
@@ -39,6 +40,47 @@ class AppointmentRepository(BaseRepository[AppointmentOut]):
             .order_by(self.model.starts_at)
         )
         return [self.mapper.from_alchemy_to_schema(el) for el in result.scalars().all()]
+
+    async def get_due_reminders(self, marker, now, window_start, window_end):
+        """Записи, которым пора отправить напоминание (задача 13).
+
+        Отбираем записи в блокирующих статусах (created/confirmed), чьё starts_at попадает
+        в окно [window_start, window_end], и у которых ещё не проставлен соответствующий
+        marker (reminded_24h_at / reminded_2h_at). Наличие маркера и есть идемпотентность:
+        повторный запуск планировщика не вернёт уже отправленные записи.
+
+        marker — колонка модели (self.model.reminded_24h_at и т.п.); его же передаём в
+        mark_reminder_sent() для отметки после успешной отправки.
+        """
+        result = await self.session.execute(
+            select(self.model)
+            .options(
+                selectinload(self.model.client),
+                selectinload(self.model.master),
+                selectinload(self.model.service),
+            )
+            .where(
+                self.model.status.in_(BLOCKING_STATUSES),
+                marker.is_(None),
+                self.model.starts_at >= window_start,
+                self.model.starts_at < window_end,
+            )
+            .order_by(self.model.starts_at)
+        )
+        return list(result.scalars().all())
+
+    async def mark_reminder_sent(self, appointment_id: int, marker, sent_at) -> None:
+        """Проставляет момент отправки напоминания, чтобы не слать его повторно.
+
+        marker — колонка reminded_24h_at / reminded_2h_at. Обновляем только если она ещё
+        NULL, чтобы конкурентный запуск не перезаписал отметку (UPDATE ... WHERE is NULL).
+        """
+        await self.session.execute(
+            update(self.model)
+            .where(self.model.id == appointment_id, marker.is_(None))
+            .values({marker: sent_at})
+        )
+        await self.session.commit()
 
     async def _conflicting_appointments(
         self, master_id: int, starts_at, ends_at

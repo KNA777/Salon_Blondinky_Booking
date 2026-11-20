@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # Путь действия куки — весь сайт по умолчанию.
     cookie_path: str = "/"
 
+    # --- Напоминания о записи ---
+    # За сколько времени до начала отправлять напоминания (в минутах).
+    reminder_offsets_minutes: list[int] = [24 * 60, 2 * 60]
+    # Как часто планировщик проверяет, кому пора слать напоминание (в секундах).
+    reminder_poll_interval_seconds: int = 60
+
     @property
     def use_webhook(self) -> bool:
         """True, если бот настроен на webhook (задан webhook_url и токен есть)."""
