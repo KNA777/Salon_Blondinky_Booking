@@ -2,9 +2,11 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -158,3 +160,16 @@ async def permission_exception_handler(request: Request, exc: PermissionError) -
 
 app.include_router(health_router)
 app.include_router(main_router)
+
+# --- Mini App (задача 17) ---
+# Статический фронтенд Telegram Mini App: выбор услуги -> мастера -> даты -> слота.
+# Отдаётся как обычная страница; аутентификация идёт через /auth/telegram (валидация initData),
+# а данные — через существующие REST-эндпоинты (services/masters/free-slots/appointments).
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+
+@app.get("/mini-app", include_in_schema=False)
+async def mini_app() -> FileResponse:
+    """Отдаёт HTML-страницу Mini App (фронтенд записи клиента)."""
+    return FileResponse(_STATIC_DIR / "mini-app.html")

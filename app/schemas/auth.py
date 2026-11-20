@@ -22,6 +22,17 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class TelegramLoginRequest(BaseModel):
+    """Вход через Telegram Mini App: фронтенд передаёт initData, подписанный Telegram.
+
+    Валидация подписи (HMAC по bot_token) происходит на бэкенде; отсюда фронту нужна
+    только сырая строка из `window.Telegram.WebApp.initData`. Telegram гарантирует
+    подлинность `user.id`, поэтому пароль не нужен — доверяем самой подписи.
+    """
+
+    init_data: str
+
+
 class TokenResponse(BaseModel):
     """Ответ на регистрацию/вход.
 

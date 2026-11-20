@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Запись в салон</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root { --tg-theme-bg: var(--tg-theme-secondary-bg-color, #fff); }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 16px;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--tg-theme-secondary-bg-color, #f4f4f7);
+      color: var(--tg-theme-text-color, #111);
+    }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    h2 { font-size: 16px; margin: 16px 0 8px; }
+    .step { display: none; }
+    .step.active { display: block; }
+    .list { display: flex; flex-direction: column; gap: 8px; }
+    .card {
+      background: var(--tg-theme-bg-color, #fff);
+      border-radius: 12px; padding: 14px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.06);
+      cursor: pointer;
+    }
+    .card.selected { outline: 2px solid var(--tg-theme-button-color, #2b8a3e); }
+    .card small { color: var(--tg-theme-hint-color, #777); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+    .slot {
+      text-align: center; padding: 12px 6px;
+      background: var(--tg-theme-bg-color, #fff);
+      border-radius: 10px; cursor: pointer; font-size: 15px;
+    }
+    .slot.selected { outline: 2px solid var(--tg-theme-button-color, #2b8a3e); }
+    button.primary {
+      width: 100%; padding: 14px; margin-top: 16px;
+      background: var(--tg-theme-button-color, #2b8a3e);
+      color: var(--tg-theme-button-text-color, #fff);
+      border: 0; border-radius: 12px; font-size: 16px; cursor: pointer;
+    }
+    button.back {
+      background: transparent; border: 0; color: var(--tg-theme-link-color, #2b8a3e);
+      padding: 8px 0; font-size: 14px; cursor: pointer;
+    }
+    .error { color: #c0392b; margin: 8px 0; }
+    .ok { color: #2b8a3e; margin: 8px 0; }
+    #status { margin-top: 12px; font-size: 14px; color: var(--tg-theme-hint-color, #777); }
+  </style>
+</head>
+<body>
+  <h1>Запись в салон</h1>
+
+  <div id="status">Проверка Telegram…</div>
+
+  <!-- Шаг 1: услуга -->
+  <section class="step active" id="step-service">
+    <h2>Выберите услугу</h2>
+    <div class="list" id="services"></div>
+  </section>
+
+  <!-- Шаг 2: мастер -->
+  <section class="step" id="step-master">
+    <button class="back" onclick="showStep('service')">← Назад</button>
+    <h2>Выберите мастера</h2>
+    <div class="list" id="masters"></div>
+  </section>
+
+  <!-- Шаг 3: дата -->
+  <section class="step" id="step-date">
+    <button class="back" onclick="showStep('master')">← Назад</button>
+    <h2>Выберите дату</h2>
+    <input type="date" id="date" />
+  </section>
+
+  <!-- Шаг 4: слот -->
+  <section class="step" id="step-slot">
+    <button class="back" onclick="showStep('date')">← Назад</button>
+    <h2>Свободное время</h2>
+    <div class="grid" id="slots"></div>
+    <button class="primary" id="submit" onclick="createAppointment()">Записаться</button>
+  </section>
+
+  <!-- Шаг 5: подтверждение -->
+  <section class="step" id="step-done">
+    <div class="ok" id="done-msg"></div>
+    <button class="back" onclick="location.reload()">Новая запись</button>
+  </section>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    const state = { serviceId: null, masterId: null, date: null, slot: null, clientId: null };
+
+    async function api(path, options = {}) {
+      // initData отправим в теле только для /auth/telegram; для остальных запросов
+      // вклад кроется в cookie access_token, которую сервер поставил при входе.
+      const res = await fetch(path, {
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      return res;
+    }
+
+    async function auth() {
+      // Валидируем initData на сервере; в ответ сервер ставит httpOnly cookie и возвращает client_id.
+      const res = await api("/auth/telegram", {
+        method: "POST",
+        body: JSON.stringify({ init_data: tg.initData }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        document.getElementById("status").className = "error";
+        document.getElementById("status").textContent =
+          "Ошибка авторизации: " + (data.detail || res.status);
+        return false;
+      }
+      state.clientId = data.client_id;
+      document.getElementById("status").textContent =
+        "Авторизован как " + (tg.initDataUnsafe?.user?.first_name || "клиент");
+      return true;
+    }
+
+    async function loadServices() {
+      const res = await api("/services");
+      const services = await res.json();
+      const el = document.getElementById("services");
+      el.innerHTML = "";
+      for (const s of services) {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML =
+          "<b>" + esc(s.name) + "</b><br><small>" +
+          s.duration_minutes + " мин · " + s.price + " ₽</small>";
+        card.onclick = () => { state.serviceId = s.id; showStep("master"); loadMasters(); };
+        el.appendChild(card);
+      }
+    }
+
+    async function loadMasters() {
+      const res = await api("/masters");
+      const masters = await res.json();
+      // Мастер подходит, если оказывает выбранную услугу.
+      const filtered = masters.filter((m) =>
+        (m.services || []).some((s) => s.id === state.serviceId)
+      );
+      const el = document.getElementById("masters");
+      el.innerHTML = "";
+      if (!filtered.length) {
+        el.innerHTML = '<div class="error">Нет мастеров, оказывающих эту услугу.</div>';
+        return;
+      }
+      for (const m of filtered) {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = "<b>" + esc(m.name) + "</b>";
+        card.onclick = () => {
+          state.masterId = m.id;
+          document.querySelectorAll("#masters .card").forEach((c) => c.classList.remove("selected"));
+          card.classList.add("selected");
+          showStep("date");
+        };
+        el.appendChild(card);
+      }
+    }
+
+    async function loadSlots() {
+      // После выбора даты запрашиваем свободные слоты; datetime должен быть в формате YYYY-MM-DD.
+      const dateVal = document.getElementById("date").value;
+      if (!dateVal) return;
+      state.date = dateVal;
+      const res = await api(
+        "/masters/" + state.masterId + "/free-slots?service_id=" +
+        state.serviceId + "&datetime=" + dateVal
+      );
+      const data = await res.json();
+      const el = document.getElementById("slots");
+      el.innerHTML = "";
+      if (!data.slots || !data.slots.length) {
+        el.innerHTML = '<div class="error">Нет свободных слотов на эту дату.</div>';
+        document.getElementById("submit").disabled = true;
+        return;
+      }
+      state.slot = null;
+      document.getElementById("submit").disabled = true;
+      for (const slot of data.slots) {
+        const b = document.createElement("div");
+        b.className = "slot";
+        b.textContent = formatTime(slot.starts_at) + " — " + formatTime(slot.ends_at);
+        b.onclick = () => {
+          document.querySelectorAll("#slots .slot").forEach((x) => x.classList.remove("selected"));
+          b.classList.add("selected");
+          state.slot = slot;
+          document.getElementById("submit").disabled = false;
+        };
+        el.appendChild(b);
+      }
+      showStep("slot");
+    }
+
+    async function createAppointment() {
+      if (!state.slot) return;
+      const svc = state.servicesCache.find((s) => s.id === state.serviceId);
+      const body = {
+        client_id: state.clientId,
+        master_id: state.masterId,
+        service_id: state.serviceId,
+        starts_at: state.slot.starts_at,
+        ends_at: state.slot.ends_at,
+        price: svc ? svc.price : "0",
+      };
+      const res = await api("/appointments", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        document.getElementById("done-msg").className = "error";
+        document.getElementById("done-msg").textContent =
+          "Не удалось записаться: " + (data.detail || res.status);
+        showStep("done");
+        return;
+      }
+      document.getElementById("done-msg").className = "ok";
+      document.getElementById("done-msg").textContent =
+        "Готово! Запись №" + data.id + " создана.";
+      showStep("done");
+    }
+
+    function showStep(id) {
+      document.querySelectorAll(".step").forEach((s) => s.classList.remove("active"));
+      document.getElementById("step-" + id).classList.add("active");
+    }
+
+    function formatTime(iso) {
+      // iso — aware datetime в TZ салона; показываем часы:минуты.
+      const d = new Date(iso);
+      return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function esc(s) {
+      const div = document.createElement("div");
+      div.textContent = s == null ? "" : String(s);
+      return div.innerHTML;
+    }
+
+    document.getElementById("date").addEventListener("change", loadSlots);
+
+    (async function boot() {
+      const okAuth = await auth();
+      if (!okAuth) return;
+      // Кешируем услуги, чтобы знать цену при создании записи.
+      state.servicesCache = await (await api("/services")).json();
+      loadServices();
+      showStep("service");
+    })();
+  </script>
+</body>
+</html>
