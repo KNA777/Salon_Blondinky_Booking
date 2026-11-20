@@ -58,6 +58,7 @@ async def cmd_start(message: Message, db: DBManager, storage: BookingStorage) ->
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
+    """Показать справку по командам бота."""
     await message.answer(
         "Я помогу записаться к мастеру.\n\n"
         "/start — начать запись\n"
@@ -68,6 +69,7 @@ async def cmd_help(message: Message) -> None:
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, storage: BookingStorage) -> None:
+    """Отменить запись и сбросить состояние диалога."""
     from_user = message.from_user
     if from_user is None:
         return
@@ -79,6 +81,7 @@ async def cmd_cancel(message: Message, storage: BookingStorage) -> None:
 
 
 def _telegram_id_from_query(query: CallbackQuery) -> int:
+    """Telegram id пользователя, отправившего callback."""
     return query.from_user.id
 
 
@@ -96,6 +99,7 @@ def _callback_payload(query: CallbackQuery) -> str:
 
 @router.callback_query(F.data == "cancel")
 async def cb_cancel(query: CallbackQuery, storage: BookingStorage) -> None:
+    """Обработать кнопку «Отмена»: сбросить состояние и сообщить пользователю."""
     await storage.reset(_telegram_id_from_query(query))
     await _message_from_query(query).edit_text(
         "Запись отменена. Напишите /start, чтобы начать заново."
@@ -105,6 +109,7 @@ async def cb_cancel(query: CallbackQuery, storage: BookingStorage) -> None:
 
 @router.callback_query(F.data.startswith("service:"))
 async def cb_service(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
+    """Сохранить выбранную услугу и предложить выбрать мастера."""
     service_id = int(_callback_payload(query))
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_MASTER)
@@ -117,6 +122,7 @@ async def cb_service(query: CallbackQuery, db: DBManager, storage: BookingStorag
 
 @router.callback_query(F.data.startswith("master:"))
 async def cb_master(query: CallbackQuery, storage: BookingStorage) -> None:
+    """Сохранить выбранного мастера и предложить выбрать дату."""
     master_id = int(_callback_payload(query))
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_DATE)
@@ -129,6 +135,7 @@ async def cb_master(query: CallbackQuery, storage: BookingStorage) -> None:
 
 @router.callback_query(F.data.startswith("day:"))
 async def cb_day(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
+    """Сохранить выбранную дату и предложить выбрать свободный слот."""
     day_text = _callback_payload(query)
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_SLOT)
@@ -145,6 +152,7 @@ async def cb_day(query: CallbackQuery, db: DBManager, storage: BookingStorage) -
 
 @router.callback_query(F.data.startswith("slot:"))
 async def cb_slot(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
+    """Создать запись по выбранному слоту и показать подтверждение."""
     user_id = _telegram_id_from_query(query)
     ctx = await storage.get_context(user_id)
     if ctx.client_id is None or ctx.master_id is None or ctx.service_id is None:
@@ -178,6 +186,7 @@ async def cb_slot(query: CallbackQuery, db: DBManager, storage: BookingStorage) 
 
 @router.callback_query(F.data == "back_to_service")
 async def cb_back_to_service(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
+    """Вернуться на шаг выбора услуги."""
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_SERVICE)
     keyboard = await fsm.services_keyboard(db)
@@ -187,6 +196,7 @@ async def cb_back_to_service(query: CallbackQuery, db: DBManager, storage: Booki
 
 @router.callback_query(F.data == "back_to_master")
 async def cb_back_to_master(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
+    """Вернуться на шаг выбора мастера."""
     user_id = _telegram_id_from_query(query)
     ctx = await storage.get_context(user_id)
     if ctx.service_id is None:
@@ -199,6 +209,7 @@ async def cb_back_to_master(query: CallbackQuery, db: DBManager, storage: Bookin
 
 @router.callback_query(F.data == "back_to_date")
 async def cb_back_to_date(query: CallbackQuery, storage: BookingStorage) -> None:
+    """Вернуться на шаг выбора даты."""
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_DATE)
     keyboard = fsm.day_keyboard()

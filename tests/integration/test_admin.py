@@ -108,6 +108,7 @@ async def test_admin_day_listing_requires_admin(client, clean_db, admin_headers,
             "ends_at": end.isoformat(),
             "price": "1500.00",
         },
+        headers=admin_headers,
     )
 
     # Не-админ -> 403.
@@ -153,6 +154,7 @@ async def test_admin_confirm_appointment(client, clean_db, admin_headers, client
                 "ends_at": end.isoformat(),
                 "price": "1500.00",
             },
+            headers=admin_headers,
         )
     ).json()
 

@@ -7,6 +7,7 @@ access-токен. Токен кладётся в httpOnly cookie (Set-Cookie), 
 """
 
 import json
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response, status
 
@@ -34,7 +35,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(**build_auth_cookie(token))
 
 
-def _client_name_from_init_data(fields: dict) -> str:
+def _client_name_from_init_data(fields: dict[str, Any]) -> str:
     """Достаёт имя клиента из проверенного initData (поле `user` — JSON от Telegram).
 
     Берём first_name + (опционально) last_name; если поля нет или оно некорректно,

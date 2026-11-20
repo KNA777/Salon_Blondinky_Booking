@@ -11,7 +11,8 @@ class MasterRepository(BaseRepository[MasterOut]):
     model = MasterORM
     mapper = MasterMapper
 
-    async def create_master_with_services(self, data: MasterCreate):
+    async def create_master_with_services(self, data: MasterCreate) -> MasterOut:
+        """Создать мастера и привязать к нему услуги за один проход."""
         stmt = (
             insert(self.model)
             .values(**MasterAdd(**data.model_dump()).model_dump())
@@ -30,17 +31,18 @@ class MasterRepository(BaseRepository[MasterOut]):
             select(self.model).options(selectinload(self.model.services)).filter_by(id=master_id)
         )
         result = await self.session.execute(query)
-        data = result.scalars().one()
-        return self.mapper.from_alchemy_to_schema(data)
+        obj = result.scalars().one()
+        return self.mapper.from_alchemy_to_schema(obj)
 
-    async def get_all_active_masters_bulk(self, include_inactive: bool):
+    async def get_all_active_masters_bulk(self, include_inactive: bool) -> list[MasterOut]:
+        """Все мастера с услугами списком. По умолчанию только активные; include_inactive — все."""
         query = select(self.model).options(selectinload(self.model.services))
         if not include_inactive:
             query = query.where(self.model.is_active)
         data = await self.session.execute(query)
         return [self.mapper.from_alchemy_to_schema(el) for el in data.scalars().all()]
 
-    async def get_one_with_services(self, master_id: int):
+    async def get_one_with_services(self, master_id: int) -> MasterOut:
         """Мастер по id вместе с услугами (для вывода имени и состава услуг)."""
         query = (
             select(self.model).options(selectinload(self.model.services)).filter_by(id=master_id)

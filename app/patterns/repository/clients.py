@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import select
 
 from app.core.security import hash_password
@@ -45,7 +47,7 @@ class ClientRepository(BaseRepository[ClientOut]):
         payload["password_hash"] = hash_password(password)
         return await self.create_from_mapping(payload)
 
-    async def create_from_mapping(self, payload: dict) -> ClientOut:
+    async def create_from_mapping(self, payload: dict[str, Any]) -> ClientOut:
         """Создать клиента из словаря (нужно для полей, которых нет в схеме ClientCreate)."""
         obj = self.model(**payload)
         self.session.add(obj)

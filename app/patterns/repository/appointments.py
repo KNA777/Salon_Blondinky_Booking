@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Any
+
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
@@ -5,7 +8,7 @@ from app.core.exceptions import NotFoundError, PermissionError, SlotConflictErro
 from app.models import AppointmentORM, AppointmentStatusEnum
 from app.patterns.mapper.appointments import AppointmentMapper
 from app.patterns.repository.base import BaseRepository
-from app.schemas.appointment import AppointmentOut
+from app.schemas.appointment import AppointmentCreate, AppointmentOut
 from app.services.booking_conflict import BLOCKING_STATUSES, overlaps
 from app.services.status_machine import validate_transition
 
@@ -14,17 +17,17 @@ class AppointmentRepository(BaseRepository[AppointmentOut]):
     model = AppointmentORM
     mapper = AppointmentMapper
 
-    async def get_bulk_by_client(self, client_id: int):
+    async def get_bulk_by_client(self, client_id: int) -> list[AppointmentOut]:
         """Все записи клиента (для личного кабинета / истории)."""
         result = await self.session.execute(select(self.model).filter_by(client_id=client_id))
         return [self.mapper.from_alchemy_to_schema(el) for el in result.scalars().all()]
 
-    async def get_bulk_by_master(self, master_id: int):
+    async def get_bulk_by_master(self, master_id: int) -> list[AppointmentOut]:
         """Все записи мастера (для просмотра расписания админом)."""
         result = await self.session.execute(select(self.model).filter_by(master_id=master_id))
         return [self.mapper.from_alchemy_to_schema(el) for el in result.scalars().all()]
 
-    async def get_by_day(self, day_start, day_end):
+    async def get_by_day(self, day_start: datetime, day_end: datetime) -> list[AppointmentOut]:
         """Все записи, пересекающиеся с интервалом [day_start, day_end).
 
         Используется для админского просмотра расписания на день. day_start/day_end —
@@ -41,7 +44,13 @@ class AppointmentRepository(BaseRepository[AppointmentOut]):
         )
         return [self.mapper.from_alchemy_to_schema(el) for el in result.scalars().all()]
 
-    async def get_due_reminders(self, marker, now, window_start, window_end):
+    async def get_due_reminders(
+        self,
+        marker: Any,
+        now: datetime,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> list[AppointmentORM]:
         """Записи, которым пора отправить напоминание (задача 13).
 
         Отбираем записи в блокирующих статусах (created/confirmed), чьё starts_at попадает
@@ -69,7 +78,7 @@ class AppointmentRepository(BaseRepository[AppointmentOut]):
         )
         return list(result.scalars().all())
 
-    async def mark_reminder_sent(self, appointment_id: int, marker, sent_at) -> None:
+    async def mark_reminder_sent(self, appointment_id: int, marker: Any, sent_at: datetime) -> None:
         """Проставляет момент отправки напоминания, чтобы не слать его повторно.
 
         marker — колонка reminded_24h_at / reminded_2h_at. Обновляем только если она ещё
@@ -83,7 +92,7 @@ class AppointmentRepository(BaseRepository[AppointmentOut]):
         await self.session.commit()
 
     async def _conflicting_appointments(
-        self, master_id: int, starts_at, ends_at
+        self, master_id: int, starts_at: datetime, ends_at: datetime
     ) -> list[AppointmentORM]:
         """Записи того же мастера в блокирующих статусах, пересекающиеся с интервалом.
 
@@ -100,7 +109,7 @@ class AppointmentRepository(BaseRepository[AppointmentOut]):
         )
         return list(result.scalars().all())
 
-    async def create_with_conflict_check(self, data):
+    async def create_with_conflict_check(self, data: AppointmentCreate) -> AppointmentOut:
         """Создать запись, проверив, что слот свободен (защита от двойной записи).
 
         Проверяем пересечение с уже существующими записями мастера. Если слот занят,
@@ -114,7 +123,9 @@ class AppointmentRepository(BaseRepository[AppointmentOut]):
             raise SlotConflictError()
         return await self.create(data)
 
-    async def transition_status(self, appointment_id: int, next_status: AppointmentStatusEnum):
+    async def transition_status(
+        self, appointment_id: int, next_status: AppointmentStatusEnum
+    ) -> AppointmentOut:
         """Перевести запись в новый статус, проверив допустимость перехода.
 
         Сначала валидируем граф (status_machine), и только потом обновляем запись.
@@ -138,7 +149,9 @@ class AppointmentRepository(BaseRepository[AppointmentOut]):
         await self.session.commit()
         return self.mapper.from_alchemy_to_schema(updated)
 
-    async def cancel(self, appointment_id: int, client_id: int, is_admin: bool = False):
+    async def cancel(
+        self, appointment_id: int, client_id: int, is_admin: bool = False
+    ) -> AppointmentOut:
         """Отменить запись. Клиент отменяет ТОЛЬКО свою запись, админ — любую.
 
         Проверка владения: не-админ может отменить запись, только если её client_id
@@ -149,8 +162,13 @@ class AppointmentRepository(BaseRepository[AppointmentOut]):
         return await self.transition_status(appointment_id, AppointmentStatusEnum.CANCELLED)
 
     async def reschedule(
-        self, appointment_id: int, starts_at, ends_at, client_id: int, is_admin: bool = False
-    ):
+        self,
+        appointment_id: int,
+        starts_at: datetime,
+        ends_at: datetime,
+        client_id: int,
+        is_admin: bool = False,
+    ) -> AppointmentOut:
         """Перенести запись на новое время. Клиент — только свою, админ — любую.
 
         Проверяем владение, затем что новое время не конфликтует с другими записями того же

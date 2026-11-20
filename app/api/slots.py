@@ -18,7 +18,7 @@ async def free_slots(
     service_id: int,
     datetime: date,
     step_minutes: int = Query(default=30, ge=1, le=1440),
-):
+) -> FreeSlotsOut:
     """Свободные слоты мастера на услугу на конкретную дату.
 
     step_minutes — шаг, с которым генерируются начала слотов (по умолчанию 30 минут).

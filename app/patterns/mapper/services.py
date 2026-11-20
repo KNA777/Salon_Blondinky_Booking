@@ -4,5 +4,7 @@ from app.schemas.service import ServiceOut
 
 
 class ServiceMapper(MapperBase[ServiceOut]):
+    """Маппер услуг: ORM <-> ServiceOut."""
+
     schema = ServiceOut
     model = ServiceORM

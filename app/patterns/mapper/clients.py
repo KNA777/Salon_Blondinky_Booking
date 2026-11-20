@@ -4,5 +4,7 @@ from app.schemas.client import ClientOut
 
 
 class ClientMapper(MapperBase[ClientOut]):
+    """Маппер клиентов: ORM <-> ClientOut."""
+
     schema = ClientOut
     model = ClientORM

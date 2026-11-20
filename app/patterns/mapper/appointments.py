@@ -4,5 +4,7 @@ from app.schemas.appointment import AppointmentOut
 
 
 class AppointmentMapper(MapperBase[AppointmentOut]):
+    """Маппер записей: ORM <-> AppointmentOut."""
+
     schema = AppointmentOut
     model = AppointmentORM

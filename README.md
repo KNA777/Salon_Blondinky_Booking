@@ -266,7 +266,43 @@ uv run pytest -q && uv run ruff check .
 
 ## Оговорки текущего этапа
 
-- Напоминания о записи (за 24 и 2 часа) и валидация Telegram `initData` ещё не реализованы —
-  см. план `salon-booking-plan.xlsx`.
+- Онлайн-предоплата, AI-ассистент и голосовые сообщения ещё не реализованы — см. план
+  `salon-booking-plan.xlsx`.
 
 Полный пошаговый план — в файле `salon-booking-plan.xlsx` (корень рабочей директории).
+
+## Деплой на сервер (production)
+
+Готовый серверный набор — в `docker-compose.prod.yml` + `Caddyfile`:
+
+```bash
+cp .env.example .env.prod   # задайте реальные секреты: JWT_SECRET_KEY, пароль БД и т.п.
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+Особенности продакшн-режима:
+
+- `APP_ENV=prod` и `COOKIE_SECURE=true` обязательны — иначе приложение не стартует
+  (защита от запуска с dev-секретами или открытым токеном).
+- Caddy сам получает и продлевает TLS-сертификат (Let's Encrypt); в `Caddyfile`
+  замените `salon.example.com` на свой домен.
+- Postgres и Redis закрыты от внешней сети (публикуются только порты 80/443 у Caddy).
+
+### Создание первого администратора
+
+Публичного эндпоинта регистрации админа нет (иначе им мог бы воспользоваться любой),
+поэтому админ создаётся командой на сервере:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec api \
+  python -m app.create_admin --name "Администратор" --phone "+79990000000" --password "ваш-пароль"
+```
+
+(Если не передавать `--password`, пароль будет запрошен интерактивно и не попадёт в
+историю команд.)
+
+### Безопасность
+
+Полный разбор мер защиты и рекомендаций по эксплуатации — в [`SECURITY.md`](SECURITY.md).
+
+Описание продукта для владельца (как пользоваться) — в [`PRODUCT.md`](PRODUCT.md).

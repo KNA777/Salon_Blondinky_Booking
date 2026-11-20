@@ -150,11 +150,11 @@ async def test_clients_and_appointments_full_flow(client, clean_db, admin_header
     # Повторный upsert с тем же telegram_id возвращает того же клиента (без дубля).
     c1_again = (await client.post("/clients", json={"name": "Иван", "telegram_id": 111})).json()
     assert c1["id"] == c1_again["id"]
-    # Среди клиентов есть наш (плюс админ из фикстуры admin_headers).
-    clients = (await client.get("/clients")).json()
+    # Список клиентов — только админ (персональные данные).
+    clients = (await client.get("/clients", headers=admin_headers)).json()
     assert any(c["id"] == c1["id"] for c in clients)
 
-    # Создание записи.
+    # Создание записи (админ для любого клиента).
     starts_at, ends_at = _slot(date(2026, 11, 25), 10)
     appt = await client.post(
         "/appointments",
@@ -166,19 +166,24 @@ async def test_clients_and_appointments_full_flow(client, clean_db, admin_header
             "ends_at": ends_at,
             "price": "1500.00",
         },
+        headers=admin_headers,
     )
     assert appt.status_code == 200
     appointment = appt.json()
     assert appointment["status"] == "created"
 
-    # Список записей клиента.
-    by_client = (await client.get("/appointments", params={"client_id": c1["id"]})).json()
+    # Список записей клиента (админ видит по client_id).
+    by_client = (
+        await client.get("/appointments", params={"client_id": c1["id"]}, headers=admin_headers)
+    ).json()
     assert len(by_client) == 1
     assert by_client[0]["id"] == appointment["id"]
 
-    # Смена статуса через машину: created -> confirmed.
+    # Смена статуса через машину: created -> confirmed (только админ).
     confirmed = await client.post(
-        f"/appointments/{appointment['id']}/status", json={"status": "confirmed"}
+        f"/appointments/{appointment['id']}/status",
+        json={"status": "confirmed"},
+        headers=admin_headers,
     )
     assert confirmed.status_code == 200
     assert confirmed.json()["status"] == "confirmed"
@@ -208,8 +213,8 @@ async def test_appointment_double_booking_rejected_at_api(client, clean_db, admi
     }
     payload2 = dict(payload1, client_id=c2["id"])
 
-    first = await client.post("/appointments", json=payload1)
-    second = await client.post("/appointments", json=payload2)
+    first = await client.post("/appointments", json=payload1, headers=admin_headers)
+    second = await client.post("/appointments", json=payload2, headers=admin_headers)
 
     assert first.status_code == 200
     assert second.status_code == 409
@@ -238,12 +243,17 @@ async def test_forbidden_status_transition_returns_409(client, clean_db, admin_h
                 "ends_at": ends_at,
                 "price": "1500.00",
             },
+            headers=admin_headers,
         )
     ).json()
 
     # completed -> created запрещён.
-    await client.post(f"/appointments/{appt['id']}/status", json={"status": "completed"})
-    resp = await client.post(f"/appointments/{appt['id']}/status", json={"status": "created"})
+    await client.post(
+        f"/appointments/{appt['id']}/status", json={"status": "completed"}, headers=admin_headers
+    )
+    resp = await client.post(
+        f"/appointments/{appt['id']}/status", json={"status": "created"}, headers=admin_headers
+    )
     assert resp.status_code == 409
 
 
@@ -273,6 +283,7 @@ async def test_reschedule_and_cancel(client, clean_db, admin_headers):
                 "ends_at": ends_at,
                 "price": "1500.00",
             },
+            headers=admin_headers,
         )
     ).json()
 
@@ -321,6 +332,7 @@ async def test_non_owner_cannot_cancel(client, clean_db, admin_headers):
                 "ends_at": ends_at,
                 "price": "1500.00",
             },
+            headers=admin_headers,
         )
     ).json()
 

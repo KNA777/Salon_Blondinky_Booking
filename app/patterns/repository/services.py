@@ -10,7 +10,8 @@ class ServiceRepository(BaseRepository[ServiceOut]):
     model = ServiceORM
     mapper = ServiceMapper
 
-    async def get_all_active_services_bulk(self, include_inactive: bool):
+    async def get_all_active_services_bulk(self, include_inactive: bool) -> list[ServiceOut]:
+        """Все услуги списком. По умолчанию только активные; include_inactive — все."""
         query = select(self.model)
         if not include_inactive:
             query = query.where(self.model.is_active)

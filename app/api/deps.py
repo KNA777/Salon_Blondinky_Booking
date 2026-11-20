@@ -3,7 +3,6 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db_context_manager import DBManager
@@ -11,17 +10,23 @@ from app.core.security import decode_token
 from app.schemas.client import ClientOut
 
 
-async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
-    """Одна сессия БД на один HTTP-запрос.
+async def get_session(request: Request) -> AsyncIterator[DBManager]:
+    """Одна сессия БД (обёрнутая в DBManager) на один HTTP-запрос.
 
     `async with` гарантирует, что сессия закроется, даже если в обработчике случилась ошибка.
     Фабрика сессий создаётся один раз при старте приложения (см. lifespan в main.py).
+    Обработчики получают DBManager и обращаются к репозиториям через db.<таблица>.
     """
-    async with DBManager(request.app.state.session_factory) as session:
-        yield session
+    async with DBManager(request.app.state.session_factory) as db:
+        yield db
 
 
 def get_redis(request: Request) -> Redis:
+    """Возвращает клиент Redis из app.state (создаётся в lifespan main.py).
+
+    Не открывает и не закрывает соединение — Redis-клиент переиспользуется на всё время
+    жизни приложения. Используется, например, эндпоинтом /health для ping.
+    """
     return request.app.state.redis
 
 

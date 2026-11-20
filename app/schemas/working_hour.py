@@ -1,4 +1,5 @@
 from datetime import time
+from typing import Any
 
 from pydantic import (
     BaseModel,
@@ -17,7 +18,8 @@ class WorkingHourBase(BaseModel):
 
     @field_validator("start_time", "end_time", mode="before")
     @classmethod
-    def parse_time_without_seconds(cls, v):
+    def parse_time_without_seconds(cls, v: Any) -> Any:
+        """Добавляет секунды к строке «ЧЧ:ММ», чтобы Pydantic мог её распарсить."""
         # Если пришла строка в формате "ЧЧ:ММ", добавляем секунды для Pydantic
         if isinstance(v, str) and len(v) == 5 and v[2] == ":":
             return v + ":00"

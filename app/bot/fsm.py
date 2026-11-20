@@ -17,6 +17,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from app.core.config import get_settings
 from app.core.db_context_manager import DBManager
 from app.schemas.appointment import AppointmentCreate
+from app.schemas.master import MasterOut
+from app.schemas.service import ServiceOut
 from app.services.slots import get_free_slots
 
 # Сколько дней вперёд предлагать на выбор даты.
@@ -39,7 +41,7 @@ def _salon_tz() -> ZoneInfo:
     return ZoneInfo(get_settings().salon_timezone)
 
 
-def _service_label(service, number: int) -> str:
+def _service_label(service: ServiceOut, number: int) -> str:
     """Текст кнопки услуги: «1. Маникюр — 45 мин, 1500 ₽»."""
     if service.price == service.price.to_integral_value():
         price = f"{service.price:.0f}"
@@ -48,7 +50,8 @@ def _service_label(service, number: int) -> str:
     return f"{number}. {service.name} — {service.duration_minutes} мин, {price} ₽"
 
 
-def _master_label(master, number: int) -> str:
+def _master_label(master: MasterOut, number: int) -> str:
+    """Текст кнопки мастера: «1. Имя мастера»."""
     return f"{number}. {master.name}"
 
 

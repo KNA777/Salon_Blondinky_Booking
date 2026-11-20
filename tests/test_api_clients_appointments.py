@@ -5,14 +5,37 @@
 включая отказ запрещённых переходов статуса (HTTP 409).
 """
 
+from datetime import UTC, datetime
+from decimal import Decimal
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_client, get_session
 from app.main import app
 from app.models.appointment import AppointmentStatusEnum
+from app.schemas.appointment import AppointmentOut
+from app.schemas.client import ClientOut
 
 # --- фейки репозиториев и сессии ---------------------------------------------
+
+
+def _fake_appointment(appointment_id: int, status: str = "created") -> AppointmentOut:
+    """Собирает валидную AppointmentOut для ответов фейкового репозитория.
+
+    Эндпоинты теперь типизированы как AppointmentOut, поэтому FastAPI валидирует ответ:
+    фейк должен возвращать полную схему, а не частичный dict.
+    """
+    return AppointmentOut(
+        id=appointment_id,
+        client_id=1,
+        master_id=1,
+        service_id=1,
+        starts_at=datetime(2026, 11, 20, 10, 0, tzinfo=UTC),
+        ends_at=datetime(2026, 11, 20, 10, 45, tzinfo=UTC),
+        price=Decimal("1500.00"),
+        status=status,
+    )
 
 
 class FakeRepo:
@@ -35,7 +58,7 @@ class FakeClients(FakeRepo):
 
     async def get_one_by_id(self, **kw):
         self.calls.append(("get_one_by_id", kw))
-        return {"id": kw.get("id")}
+        return ClientOut(id=kw.get("id"), name="Клиент")
 
     async def upsert_by_telegram_id(self, data):
         self.calls.append(("upsert_by_telegram_id", data.telegram_id))
@@ -45,7 +68,7 @@ class FakeClients(FakeRepo):
 class FakeAppointments(FakeRepo):
     async def create_with_conflict_check(self, data):
         self.calls.append(("create_with_conflict_check", data.client_id))
-        return {"id": 1, "status": "created"}
+        return _fake_appointment(1)
 
     async def get_bulk_by_client(self, client_id):
         self.calls.append(("get_bulk_by_client", client_id))
@@ -61,19 +84,19 @@ class FakeAppointments(FakeRepo):
 
     async def get_one_by_id(self, **kw):
         self.calls.append(("get_one_by_id", kw))
-        return {"id": kw.get("id")}
+        return _fake_appointment(kw.get("id"))
 
     async def transition_status(self, appointment_id, status):
         self.calls.append(("transition_status", appointment_id, status))
-        return {"id": appointment_id, "status": status.value}
+        return _fake_appointment(appointment_id, status=status.value)
 
     async def cancel(self, appointment_id, client_id=None, is_admin=False):
         self.calls.append(("cancel", appointment_id, client_id, is_admin))
-        return {"id": appointment_id, "status": "cancelled"}
+        return _fake_appointment(appointment_id, status="cancelled")
 
     async def reschedule(self, appointment_id, starts_at, ends_at, client_id=None, is_admin=False):
         self.calls.append(("reschedule", appointment_id, client_id, is_admin))
-        return {"id": appointment_id, "status": "confirmed"}
+        return _fake_appointment(appointment_id, status="confirmed")
 
 
 class FakeDBManager:
@@ -111,6 +134,7 @@ def _override_client(client_id=1, is_admin=False):
 def test_get_clients_by_telegram_id(client):
     clients = FakeClients()
     _override(FakeDBManager(clients=clients, appointments=FakeAppointments()))
+    _override_client(client_id=1, is_admin=True)  # список клиентов — только админ
 
     response = client.get("/clients", params={"telegram_id": 12345})
 
@@ -131,6 +155,7 @@ def test_post_client_with_telegram_id_upserts(client):
 def test_get_client_by_id(client):
     clients = FakeClients()
     _override(FakeDBManager(clients=clients, appointments=FakeAppointments()))
+    _override_client(client_id=5, is_admin=False)  # владелец видит свою карточку
 
     response = client.get("/clients/5")
 
@@ -144,6 +169,7 @@ def test_get_client_by_id(client):
 def test_post_appointment(client):
     appointments = FakeAppointments()
     _override(FakeDBManager(clients=FakeClients(), appointments=appointments))
+    _override_client(client_id=1, is_admin=False)  # запись для себя (client_id=1)
 
     payload = {
         "client_id": 1,
@@ -162,6 +188,7 @@ def test_post_appointment(client):
 def test_get_appointments_by_client(client):
     appointments = FakeAppointments()
     _override(FakeDBManager(clients=FakeClients(), appointments=appointments))
+    _override_client(client_id=9, is_admin=False)  # клиент видит только свои записи
 
     response = client.get("/appointments", params={"client_id": 9})
 
@@ -172,6 +199,7 @@ def test_get_appointments_by_client(client):
 def test_change_appointment_status_valid(client):
     appointments = FakeAppointments()
     _override(FakeDBManager(clients=FakeClients(), appointments=appointments))
+    _override_client(client_id=1, is_admin=True)  # смена статуса — только админ
 
     response = client.post("/appointments/1/status", json={"status": "confirmed"})
 
@@ -194,6 +222,7 @@ class _RejectingAppointments(FakeAppointments):
 def test_forbidden_status_transition_returns_409(client):
     appointments = _RejectingAppointments()
     _override(FakeDBManager(clients=FakeClients(), appointments=appointments))
+    _override_client(client_id=1, is_admin=True)  # смена статуса — только админ
 
     response = client.post("/appointments/1/status", json={"status": "created"})
 

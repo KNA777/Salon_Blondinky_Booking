@@ -20,8 +20,10 @@ class MapperBase[SchemaT: BaseModel]:
 
     @classmethod
     def from_alchemy_to_schema(cls, data: Any) -> SchemaT:
+        """Преобразовать ORM-объект в Pydantic-схему (DTO наружу)."""
         return cls.schema.model_validate(data, from_attributes=True)
 
     @classmethod
     def from_schema_to_alchemy(cls, data: BaseModel) -> Any:
+        """Создать ORM-объект из Pydantic-схемы."""
         return cls.model(**data.model_dump())

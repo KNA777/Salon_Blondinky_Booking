@@ -4,5 +4,7 @@ from app.schemas.master import MasterOut
 
 
 class MasterMapper(MapperBase[MasterOut]):
+    """Маппер мастеров: ORM <-> MasterOut."""
+
     schema = MasterOut
     model = MasterORM

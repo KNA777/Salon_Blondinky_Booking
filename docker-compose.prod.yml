@@ -1,0 +1,76 @@
+# Продакшн-конфигурация Docker Compose.
+#
+# Отличия от docker-compose.yml (для разработки):
+# - Нет --reload и монтирования исходников (образ самодостаточен).
+# - Код работает от непривилегированного пользователя appuser (см. Dockerfile).
+# - Postgres и Redis закрыты от внешней сети (без публичных портов).
+# - Добавлен Caddy как reverse-proxy: терминирует HTTPS и проксирует в API.
+# - APP_ENV=prod включает строгие проверки безопасности (config.py): JWT_SECRET_KEY
+#   и COOKIE_SECURE=true обязательны.
+#
+# Запуск:
+#   cp .env.example .env.prod   # заполнить реальными секретами
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod exec api python -m app.create_admin --name ... --phone ... --password ...
+
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env.prod
+    environment:
+      APP_ENV: prod
+      COOKIE_SECURE: "true"
+      POSTGRES_HOST: db
+      REDIS_HOST: redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Порт API слушаем только внутри сети Compose; наружу его отдаёт Caddy по HTTPS.
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # Без публикации порта: БД доступна только из сети Compose.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

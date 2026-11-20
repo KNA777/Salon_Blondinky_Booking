@@ -3,6 +3,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel
 from sqlalchemy import Table, delete, insert, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.patterns.mapper.base import MapperBase
@@ -22,7 +23,8 @@ class BaseRepository[SchemaT: BaseModel]:
     model: ClassVar[Any]
     mapper: ClassVar[type[MapperBase[SchemaT]]]
 
-    def __init__(self, session):
+    def __init__(self, session: AsyncSession) -> None:
+        """Сохраняет асинхронную сессию, с которой работает репозиторий."""
         self.session = session
 
     async def create(self, data: BaseModel) -> SchemaT:
@@ -37,7 +39,8 @@ class BaseRepository[SchemaT: BaseModel]:
         data = await self.session.execute(query)
         return [self.mapper.from_alchemy_to_schema(el) for el in data.scalars().all()]
 
-    async def get_one_by_id(self, **filter_by) -> SchemaT:
+    async def get_one_by_id(self, **filter_by: Any) -> SchemaT:
+        """Найти одну запись по фильтрам (обычно id) или кинуть NotFoundError."""
         query = select(self.model).filter_by(**filter_by)
         result = await self.session.execute(query)
         data = result.scalars().first()
@@ -45,7 +48,8 @@ class BaseRepository[SchemaT: BaseModel]:
             raise NotFoundError(f"{self.model.__tablename__} not found")
         return self.mapper.from_alchemy_to_schema(data)
 
-    async def is_active_false(self, obj_id) -> None:
+    async def is_active_false(self, obj_id: Any) -> None:
+        """Пометить запись как неактивную (soft delete) по id."""
         stmt = (
             update(self.model).filter_by(id=obj_id).values(is_active=False).returning(self.model.id)
         )
@@ -55,7 +59,7 @@ class BaseRepository[SchemaT: BaseModel]:
         await self.session.commit()
 
     async def change_object(
-        self, data: BaseModel, exclude_unset: bool = False, **filter_by
+        self, data: BaseModel, exclude_unset: bool = False, **filter_by: Any
     ) -> SchemaT:
         stmt = (
             update(self.model)
@@ -70,7 +74,8 @@ class BaseRepository[SchemaT: BaseModel]:
         await self.session.commit()
         return self.mapper.from_alchemy_to_schema(obj)
 
-    async def delete(self, **filter_by) -> None:
+    async def delete(self, **filter_by: Any) -> None:
+        """Удалить запись по фильтрам или кинуть NotFoundError, если её нет."""
         stmt = delete(self.model).filter_by(**filter_by).returning(self.model.id)
         result = await self.session.execute(stmt)
         if result.scalars().first() is None:

@@ -17,8 +17,10 @@ appointments: отбор идёт по `marker IS NULL`, а отметка — �
 
 import asyncio
 from datetime import datetime, timedelta
+from typing import Any
 
 from app.core.config import get_settings
+from app.core.db_context_manager import DBManager
 from app.models import AppointmentORM
 
 # Соответствие: метка напоминания -> атрибут-маркер на модели (и колонка в БД).
@@ -60,7 +62,7 @@ def is_due(
     return lower < delta_seconds <= upper
 
 
-async def send_due_reminders(db, bot, now: datetime) -> int:
+async def send_due_reminders(db: DBManager, bot: Any, now: datetime) -> int:
     """Отправляет все «созревшие» напоминания и возвращает их количество.
 
     db — DBManager (см. app/core/db_context_manager.py); bot — aiogram Bot или любой объект
@@ -102,7 +104,7 @@ async def send_due_reminders(db, bot, now: datetime) -> int:
     return sent
 
 
-async def reminder_loop(session_factory, bot, stop_event) -> None:
+async def reminder_loop(session_factory: Any, bot: Any, stop_event: asyncio.Event) -> None:
     """Бесконечный цикл рассылки напоминаний.
 
     Запускается как background-таск (в lifespan FastAPI или в процессе бота). Каждые

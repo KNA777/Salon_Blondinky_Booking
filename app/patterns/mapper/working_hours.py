@@ -4,5 +4,7 @@ from app.schemas.working_hour import WorkingHourOut
 
 
 class WorkingHourMapper(MapperBase[WorkingHourOut]):
+    """Маппер рабочих часов: ORM <-> WorkingHourOut."""
+
     schema = WorkingHourOut
     model = WorkingHourORM

@@ -7,6 +7,8 @@
 Без валидного секрета отвечаем 403 — это защищает от поддельных запросов к боту.
 """
 
+import hmac
+
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
@@ -29,14 +31,17 @@ class WebhookResponse(BaseModel):
 
 
 def _secret_matches(provided: str | None, expected: str | None) -> bool:
-    """Сравнивает секрет, пришедший в заголовке, с ожидаемым.
+    """Сравнивает секрет, пришедший в заголовке, с ожидаемым (constant-time).
 
-    Простое == допустимо: секрет не пароль пользователя, а случайная строка для подписи
-    запросов Telegram. Сравниваем безопасно (обе строки в str) и требуем совпадения.
+    Секрет — это криптографическая строка, которой Telegram подписывает webhook-запросы,
+    поэтому сравниваем её через hmac.compare_digest: сравнение выполняется за одинаковое
+    время независимо от того, где именно строки расходятся. Обычное `==` давало бы
+    утечку через timing-атаку (злоумышленник мог бы подбирать секрет посимвольно).
+    Если ожидаемый секрет не настроен, любой входящий считается неверным.
     """
-    if expected is None:
+    if expected is None or provided is None:
         return False
-    return provided == expected
+    return hmac.compare_digest(provided, expected)
 
 
 def _extract_update_id(update: dict) -> int | None:

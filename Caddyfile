@@ -1,0 +1,19 @@
+# Caddy reverse-proxy: терминирует HTTPS и проксирует запросы в API-контейнер.
+#
+# Замените salon.example.com на реальный домен. Caddy автоматически получит и будет
+# продлевать TLS-сертификат от Let's Encrypt. Проверка /health встроена в Docker,
+# здесь просто проксируем трафик.
+
+salon.example.com {
+    encode gzip
+
+    reverse_proxy api:8000
+
+    # Заголовки безопасности.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+    }
+}

@@ -13,7 +13,7 @@
 
 import json
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from redis.asyncio import Redis
 
@@ -40,7 +40,7 @@ class BookingStorage(Protocol):
 
     async def get_context(self, user_id: int) -> BookingContext: ...
 
-    async def save(self, user_id: int, **fields) -> None: ...
+    async def save(self, user_id: int, **fields: Any) -> None: ...
 
     async def reset(self, user_id: int) -> None: ...
 
@@ -65,7 +65,7 @@ class InMemoryBookingStorage:
     async def get_context(self, user_id: int) -> BookingContext:
         return self._ensure(user_id)
 
-    async def save(self, user_id: int, **fields) -> None:
+    async def save(self, user_id: int, **fields: Any) -> None:
         """Обновить одно или несколько полей контекста записи."""
         ctx = self._ensure(user_id)
         for name, value in fields.items():
@@ -76,6 +76,7 @@ class InMemoryBookingStorage:
         self._data[user_id] = BookingContext(state=BookingState.START)
 
     def _ensure(self, user_id: int) -> BookingContext:
+        """Вернуть контекст пользователя, создав его при отсутствии."""
         if user_id not in self._data:
             self._data[user_id] = BookingContext()
         return self._data[user_id]
@@ -93,6 +94,7 @@ class RedisBookingStorage:
         self._prefix = key_prefix
 
     def _key(self, user_id: int) -> str:
+        """Redis-ключ для хранения контекста пользователя."""
         return f"{self._prefix}:{user_id}"
 
     async def get_state(self, user_id: int) -> BookingState:
@@ -111,20 +113,24 @@ class RedisBookingStorage:
         text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
         return self._deserialize(text)
 
-    async def save(self, user_id: int, **fields) -> None:
+    async def save(self, user_id: int, **fields: Any) -> None:
+        """Обновить одно или несколько полей контекста записи и сохранить в Redis."""
         ctx = await self.get_context(user_id)
         for name, value in fields.items():
             setattr(ctx, name, value)
         await self._write(user_id, ctx)
 
     async def reset(self, user_id: int) -> None:
+        """Сбросить диалог до начального состояния и сохранить в Redis."""
         await self._redis.set(self._key(user_id), self._serialize(BookingContext()))
 
     async def _write(self, user_id: int, ctx: BookingContext) -> None:
+        """Сериализовать контекст и записать его в Redis."""
         await self._redis.set(self._key(user_id), self._serialize(ctx))
 
     @staticmethod
     def _serialize(ctx: BookingContext) -> str:
+        """Сериализовать контекст записи в JSON-строку."""
         return json.dumps(
             {
                 "state": ctx.state.value,
@@ -137,6 +143,7 @@ class RedisBookingStorage:
 
     @staticmethod
     def _deserialize(raw: str) -> BookingContext:
+        """Восстановить BookingContext из JSON-строки."""
         data: dict = json.loads(raw)
         return BookingContext(
             state=BookingState(data.get("state", BookingState.START.value)),

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -60,11 +61,40 @@ class Settings(BaseSettings):
     # Путь действия куки — весь сайт по умолчанию.
     cookie_path: str = "/"
 
+    # --- Безопасность эксплуатации ---
+    # Название окружения: dev / prod. В prod включаются строгие проверки (см.
+    # model_validator ниже): запрещено использовать dev-дефолтный JWT-ключ и открытые
+    # (Secure=False) куки по HTTP.
+    app_env: Literal["dev", "prod"] = "dev"
+
     # --- Напоминания о записи ---
     # За сколько времени до начала отправлять напоминания (в минутах).
     reminder_offsets_minutes: list[int] = [24 * 60, 2 * 60]
     # Как часто планировщик проверяет, кому пора слать напоминание (в секундах).
     reminder_poll_interval_seconds: int = 60
+
+    @model_validator(mode="after")
+    def _enforce_production_safety(self) -> "Settings":
+        """Запрещает запуск продакшена с небезопасными настройками.
+
+        В окружении prod:
+        - JWT-ключ обязан быть заменён (иначе любой сможет подделать токен);
+        - cookie обязана ходить только по HTTPS (Secure=True), иначе токен крадут на
+          пути. Это «fail fast»: сервис не стартует в заведомо дырявой конфигурации,
+          а падает с понятной ошибкой.
+        """
+        if self.app_env == "prod":
+            if self.jwt_secret_key == "dev-secret-change-me-in-production":
+                raise ValueError(
+                    "В окружении prod задайте JWT_SECRET_KEY (длинную случайную строку) "
+                    "и не оставляйте dev-дефолт."
+                )
+            if not self.cookie_secure:
+                raise ValueError(
+                    "В окружении prod задайте COOKIE_SECURE=true: access-токен должен "
+                    "передаваться только по HTTPS."
+                )
+        return self
 
     @property
     def use_webhook(self) -> bool:
