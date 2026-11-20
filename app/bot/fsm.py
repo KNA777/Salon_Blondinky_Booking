@@ -24,6 +24,16 @@ DAYS_AHEAD = 7
 # Шаг сетки слотов в минутах.
 SLOT_STEP_MINUTES = 30
 
+RU_DAYS = {
+    "Mon": "Пн",
+    "Tue": "Вт",
+    "Wed": "Ср",
+    "Thu": "Чт",
+    "Fri": "Пт",
+    "Sat": "Сб",
+    "Sun": "Вс"
+}
+
 
 def _salon_tz() -> ZoneInfo:
     return ZoneInfo(get_settings().salon_timezone)
@@ -63,10 +73,20 @@ def available_days() -> list[date]:
 
 def day_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура выбора даты."""
-    buttons = [
-        [InlineKeyboardButton(text=d.strftime("%d.%m (%a)"), callback_data=f"day:{d.isoformat()}")]
-        for d in available_days()
-    ]
+    buttons = []
+    for d in available_days():
+        # Получаем английское сокращение (например, 'Thu')
+        eng_day = d.strftime("%a")
+        # Ищем русский перевод, если нет — оставляем как есть
+        ru_day = RU_DAYS.get(eng_day, eng_day)
+
+        # Форматируем текст: 19.11 (Чт)
+        text = f"{d.strftime('%d.%m')} ({ru_day})"
+
+        buttons.append([
+            InlineKeyboardButton(text=text, callback_data=f"day:{d.isoformat()}")
+        ])
+
     buttons.append([InlineKeyboardButton(text="Назад", callback_data="back_to_master")])
     buttons.append([InlineKeyboardButton(text="Отмена", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -101,7 +121,7 @@ async def masters_keyboard(db: DBManager, service_id: int) -> InlineKeyboardMark
 
 
 async def slots_available(
-    db: DBManager, master_id: int, service_id: int, day: date
+        db: DBManager, master_id: int, service_id: int, day: date
 ) -> list[tuple[datetime, datetime]]:
     """Свободные слоты (уже в часовом поясе салона) для мастера+услуги+даты.
 
@@ -114,7 +134,7 @@ async def slots_available(
 
 
 async def slots_keyboard(
-    db: DBManager, master_id: int, service_id: int, day: date
+        db: DBManager, master_id: int, service_id: int, day: date
 ) -> InlineKeyboardMarkup:
     slots = await slots_available(db, master_id, service_id, day)
     buttons = [
@@ -132,11 +152,11 @@ async def slots_keyboard(
 
 
 async def create_appointment(
-    db: DBManager,
-    client_id: int,
-    master_id: int,
-    service_id: int,
-    slot_starts: datetime,
+        db: DBManager,
+        client_id: int,
+        master_id: int,
+        service_id: int,
+        slot_starts: datetime,
 ) -> int:
     """Создаёт запись в БД и возвращает её id.
 
@@ -160,10 +180,10 @@ async def create_appointment(
 
 
 async def confirm_text(
-    client_name: str,
-    master_name: str,
-    service_name: str,
-    slot_starts: datetime,
+        client_name: str,
+        master_name: str,
+        service_name: str,
+        slot_starts: datetime,
 ) -> str:
     """Текст подтверждения записи, показываемый клиенту."""
     local = slot_starts.astimezone(_salon_tz())
