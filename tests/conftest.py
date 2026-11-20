@@ -19,6 +19,23 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.deps import get_session
 
+# `Settings` требует postgres_* / redis_* без дефолтов (production fail-fast). Юнит-тесты
+# auth/bot/webhook вызывают get_settings() только ради JWT- и таймзона-параметров, к БД и
+# Redis не подключаясь, а в CI-джобе `pytest-unit` эти переменные не заданы — без заглушек
+# Settings() падал бы с ValidationError. Проставляем значения через setdefault на этапе
+# импорта conftest (до любых тестов): реальные env из CI/integration-джоба не перетираются.
+for _key, _value in {
+    "POSTGRES_USER": "postgres",
+    "POSTGRES_PASSWORD": "postgres",
+    "POSTGRES_DB": "postgres",
+    "POSTGRES_HOST": "localhost",
+    "POSTGRES_PORT": "5432",
+    "REDIS_HOST": "localhost",
+    "REDIS_PORT": "6379",
+}.items():
+    os.environ.setdefault(_key, _value)
+
+
 # Имя тестовой базы: отдельная от салона, чтобы тесты не трогали рабочие данные.
 TEST_DB_NAME = "salon_blondinky_test"
 
