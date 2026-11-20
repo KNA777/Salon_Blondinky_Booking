@@ -113,9 +113,7 @@ async def cb_slot(query: CallbackQuery, db: DBManager, storage: BookingStorage) 
     ctx = await storage.get_context(user_id)
     starts_at = datetime.fromisoformat(query.data.split(":", 1)[1])
 
-    await fsm.create_appointment(
-        db, ctx.client_id, ctx.master_id, ctx.service_id, starts_at
-    )
+    await fsm.create_appointment(db, ctx.client_id, ctx.master_id, ctx.service_id, starts_at)
 
     master = await db.masters.get_one_with_services(ctx.master_id)
     service = await db.services.get_one_by_id(id=ctx.service_id)
@@ -154,4 +152,3 @@ async def cb_back_to_date(query: CallbackQuery, storage: BookingStorage) -> None
     keyboard = fsm.day_keyboard()
     await query.message.edit_text("Выберите дату 👇", reply_markup=keyboard)
     await query.answer()
-

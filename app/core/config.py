@@ -38,6 +38,27 @@ class Settings(BaseSettings):
     # Секрет, которым Telegram подписывает webhook-запросы; сверяется с env-переменной.
     webhook_secret: str | None = None
 
+    # --- JWT-аутентификация ---
+    # Секретный ключ для подписи access-токенов. В продакшене обязателен и должен быть
+    # длинной случайной строкой; для локальной разработки есть безопасный дефолт.
+    jwt_secret_key: str = "dev-secret-change-me-in-production"
+    # Алгоритм подписи (HS256 — симметричный, ключ один на подпись и проверку).
+    jwt_algorithm: str = "HS256"
+    # Время жизни access-токена, в минутах.
+    jwt_expire_minutes: int = 60 * 24
+
+    # --- Кука access_token (как JWT передаётся браузеру) ---
+    # Имя cookie, в которой ходит access-токен. Браузер сам отсылает её на каждый запрос.
+    cookie_name: str = "access_token"
+    # HttpOnly всегда включён ниже в коде; Secure=True требует HTTPS, поэтому выключаем
+    # для локальной разработки и включаем в продакшене (задать в .env).
+    cookie_secure: bool = False
+    # SameSite контролирует отправку куки на кросс-сайтовые запросы. Lax — безопасный
+    # дефолт: кука идёт по переходам сверху, но не в чужих iframe/кросс-домен fetch.
+    cookie_samesite: str = "lax"
+    # Путь действия куки — весь сайт по умолчанию.
+    cookie_path: str = "/"
+
     @property
     def use_webhook(self) -> bool:
         """True, если бот настроен на webhook (задан webhook_url и токен есть)."""

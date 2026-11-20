@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Query
 
-from app.api.deps import DBDep
+from app.api.deps import CurrentAdminDep, DBDep
 from app.schemas.master import MasterCreate, MasterUpdate
 
 router = APIRouter(prefix="/masters", tags=["Masters"])
 
 
 @router.post("")
-async def add_master(db: DBDep, data: MasterCreate):
+async def add_master(db: DBDep, data: MasterCreate, _admin: CurrentAdminDep):
+    """Создать мастера (только админ)."""
     return await db.masters.create_master_with_services(data)
 
 
@@ -22,11 +23,15 @@ async def get_master_by_id(db: DBDep, master_id: int):
 
 
 @router.post("/{master_id}")
-async def master_is_active_on_false(db: DBDep, master_id: int):
+async def master_is_active_on_false(db: DBDep, master_id: int, _admin: CurrentAdminDep):
+    """Деактивировать мастера (только админ)."""
     await db.masters.is_active_false(master_id)
     return {"status": "OK"}
 
 
 @router.patch("/{master_id}")
-async def master_partial_change(db: DBDep, master_id: int, data: MasterUpdate):
+async def master_partial_change(
+    db: DBDep, master_id: int, data: MasterUpdate, _admin: CurrentAdminDep
+):
+    """Изменить мастера (только админ)."""
     return await db.masters.change_object(data, id=master_id, exclude_unset=True)

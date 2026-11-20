@@ -8,7 +8,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.deps import get_session
+from app.api.deps import get_current_client, get_session
 from app.main import app
 from app.models.appointment import AppointmentStatusEnum
 
@@ -67,12 +67,12 @@ class FakeAppointments(FakeRepo):
         self.calls.append(("transition_status", appointment_id, status))
         return {"id": appointment_id, "status": status.value}
 
-    async def cancel(self, appointment_id):
-        self.calls.append(("cancel", appointment_id))
+    async def cancel(self, appointment_id, client_id=None, is_admin=False):
+        self.calls.append(("cancel", appointment_id, client_id, is_admin))
         return {"id": appointment_id, "status": "cancelled"}
 
-    async def reschedule(self, appointment_id, starts_at, ends_at):
-        self.calls.append(("reschedule", appointment_id))
+    async def reschedule(self, appointment_id, starts_at, ends_at, client_id=None, is_admin=False):
+        self.calls.append(("reschedule", appointment_id, client_id, is_admin))
         return {"id": appointment_id, "status": "confirmed"}
 
 
@@ -98,6 +98,13 @@ def _override(db: FakeDBManager):
     app.dependency_overrides[get_session] = lambda: db
 
 
+def _override_client(client_id=1, is_admin=False):
+    """Подменяет текущего клиента (как будто он залогинен с заданными правами)."""
+    app.dependency_overrides[get_current_client] = lambda: type(
+        "CurrentClient", (), {"id": client_id, "is_admin": is_admin}
+    )()
+
+
 # --- клиенты ------------------------------------------------------------------
 
 
@@ -115,9 +122,7 @@ def test_post_client_with_telegram_id_upserts(client):
     clients = FakeClients()
     _override(FakeDBManager(clients=clients, appointments=FakeAppointments()))
 
-    response = client.post(
-        "/clients", json={"name": "Анна", "phone": "+7", "telegram_id": 777}
-    )
+    response = client.post("/clients", json={"name": "Анна", "phone": "+7", "telegram_id": 777})
 
     assert response.status_code == 200
     assert any(call[0] == "upsert_by_telegram_id" for call in clients.calls)
@@ -201,16 +206,18 @@ def test_forbidden_status_transition_returns_409(client):
 def test_cancel_appointment(client):
     appointments = FakeAppointments()
     _override(FakeDBManager(clients=FakeClients(), appointments=appointments))
+    _override_client(client_id=7, is_admin=False)
 
     response = client.post("/appointments/7/cancel")
 
     assert response.status_code == 200
-    assert ("cancel", 7) in appointments.calls
+    assert ("cancel", 7, 7, False) in appointments.calls
 
 
 def test_reschedule_appointment(client):
     appointments = FakeAppointments()
     _override(FakeDBManager(clients=FakeClients(), appointments=appointments))
+    _override_client(client_id=7, is_admin=False)
 
     payload = {
         "starts_at": "2026-11-21T11:00:00Z",

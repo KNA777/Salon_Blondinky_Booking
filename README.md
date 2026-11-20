@@ -14,6 +14,7 @@
 - **Redis** — хранение FSM-состояния бота в webhook-режиме (доступно из любого воркера).
 - **aiogram 3** — Telegram-бот (polling или webhook).
 - **pydantic-settings** — конфигурация из переменных окружения.
+- **PyJWT** + **bcrypt** — аутентификация: JWT access-токены и хеширование паролей.
 - **pytest** + **pytest-asyncio** — тесты; **Ruff** — линтер/форматтер.
 - **uv** — менеджер зависимостей и окружения; **Docker Compose** — локальная инфраструктура.
 
@@ -25,6 +26,8 @@
 - Защита от двойной записи: проверка конфликта на уровне приложения **и**
   exclusion-constraint в PostgreSQL.
 - Отмена (`/cancel`) и перенос (`/reschedule`) записи.
+- Аутентификация: регистрация и вход по паролю, выдача JWT access-токенов (bcrypt + PyJWT).
+- Проверка владения записью: клиент управляет только своими записями, администратор — любыми.
 - Telegram-бот с пошаговым сценарием записи (FSM), в двух режимах: long polling и webhook.
 - Webhook с проверкой секрета (`X-Telegram-Bot-Api-Secret-Token`) — от поддельных запросов.
 
@@ -97,6 +100,23 @@ uv run python -m app.bot
 | `BOT_TOKEN` | токен Telegram-бота от @BotFather | для бота |
 | `WEBHOOK_URL` | публичный URL webhook (включает webhook-режим) | для webhook |
 | `WEBHOOK_SECRET` | секрет подписи webhook (придумываете сами) | для webhook |
+| `JWT_SECRET_KEY` | ключ подписи JWT-токенов (в проде — длинная случайная строка) | нет (есть dev-дефолт) |
+| `JWT_ALGORITHM` | алгоритм подписи токена (по умолчанию `HS256`) | нет |
+| `JWT_EXPIRE_MINUTES` | время жизни access-токена в минутах (по умолчанию 1440) | нет |
+
+## Аутентификация и владение записью
+
+Пароли клиентов хранятся только как bcrypt-хеш, аутентификация — по JWT access-токенам.
+
+- `POST /auth/register` — создать клиента с паролем, вернуть токен.
+- `POST /auth/login` — вход по телефону и паролю, вернуть токен.
+
+Дальше токен передаётся в заголовке `Authorization: Bearer <token>`. Зависимость
+`get_current_client` (в `app/api/deps.py`) расшифровывает его и выдаёт текущего клиента.
+
+**Владение записью**: клиент может отменять (`/cancel`) и переносить (`/reschedule`) только
+свои записи — проверка идёт по `client_id`. Клиент с флагом `is_admin = true` управляет
+любыми записями. Попытка управлять чужой записью возвращает `HTTP 403`.
 
 ## Webhook-режим бота
 
@@ -122,6 +142,8 @@ https://api.telegram.org/bot<ТОКЕН>/setWebhook?url=<PUBLIC_URL>/webhook/bot
 | Метод/путь | Описание |
 | --- | --- |
 | `GET /health` | проверка БД и Redis |
+| `POST /auth/register` | регистрация клиента (вернёт JWT) |
+| `POST /auth/login` | вход (вернёт JWT) |
 | `GET/POST /services` | список / создать услугу |
 | `GET/POST /masters` | список / создать мастера |
 | `GET /masters/{id}/free-slots` | свободные слоты мастера |
@@ -154,10 +176,11 @@ app/
   core/
     config.py              # настройки из переменных окружения (pydantic-settings)
     exceptions.py          # доменные исключения (NotFoundError, SlotConflictError, ...)
+    security.py            # bcrypt-хеширование паролей и выпуск/проверка JWT
     db_context_manager.py  # контекстный менеджер сессии БД
   models/                  # SQLAlchemy-модели (client, master, service, appointment, ...)
-  schemas/                 # Pydantic-схемы запросов/ответов
-  api/                     # эндпоинты: health, services, masters, slots, clients,
+  schemas/                 # Pydantic-схемы запросов/ответов (+ auth.py)
+  api/                     # эндпоинты: health, auth, services, masters, slots, clients,
                            #            appointments, working_hours, webhook, deps
   patterns/
     repository/            # репозитории (Base + по сущностям), доступ к БД
@@ -188,6 +211,5 @@ uv run pytest -q && uv run ruff check .
 
 - Теста на сам exclusion-constraint (гонка на уровне БД) пока нет: он требует реального
   Postgres и отложен до интеграционных тестов.
-- Проверка владельца при отмене записи отложена до появления авторизации/админки.
 
 Полный пошаговый план — в файле `salon-booking-plan.xlsx` (корень рабочей директории).

@@ -149,5 +149,3 @@ class RedisBookingStorage:
 # Единый экземпляр на процесс бота (long polling). В webhook-версии используется
 # RedisBookingStorage, создаваемый в lifespan FastAPI.
 storage: BookingStorage = InMemoryBookingStorage()
-
-

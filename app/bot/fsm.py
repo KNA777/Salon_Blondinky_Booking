@@ -31,7 +31,7 @@ RU_DAYS = {
     "Thu": "Чт",
     "Fri": "Пт",
     "Sat": "Сб",
-    "Sun": "Вс"
+    "Sun": "Вс",
 }
 
 
@@ -83,9 +83,7 @@ def day_keyboard() -> InlineKeyboardMarkup:
         # Форматируем текст: 19.11 (Чт)
         text = f"{d.strftime('%d.%m')} ({ru_day})"
 
-        buttons.append([
-            InlineKeyboardButton(text=text, callback_data=f"day:{d.isoformat()}")
-        ])
+        buttons.append([InlineKeyboardButton(text=text, callback_data=f"day:{d.isoformat()}")])
 
     buttons.append([InlineKeyboardButton(text="Назад", callback_data="back_to_master")])
     buttons.append([InlineKeyboardButton(text="Отмена", callback_data="cancel")])
@@ -121,7 +119,7 @@ async def masters_keyboard(db: DBManager, service_id: int) -> InlineKeyboardMark
 
 
 async def slots_available(
-        db: DBManager, master_id: int, service_id: int, day: date
+    db: DBManager, master_id: int, service_id: int, day: date
 ) -> list[tuple[datetime, datetime]]:
     """Свободные слоты (уже в часовом поясе салона) для мастера+услуги+даты.
 
@@ -134,7 +132,7 @@ async def slots_available(
 
 
 async def slots_keyboard(
-        db: DBManager, master_id: int, service_id: int, day: date
+    db: DBManager, master_id: int, service_id: int, day: date
 ) -> InlineKeyboardMarkup:
     slots = await slots_available(db, master_id, service_id, day)
     buttons = [
@@ -152,11 +150,11 @@ async def slots_keyboard(
 
 
 async def create_appointment(
-        db: DBManager,
-        client_id: int,
-        master_id: int,
-        service_id: int,
-        slot_starts: datetime,
+    db: DBManager,
+    client_id: int,
+    master_id: int,
+    service_id: int,
+    slot_starts: datetime,
 ) -> int:
     """Создаёт запись в БД и возвращает её id.
 
@@ -180,10 +178,10 @@ async def create_appointment(
 
 
 async def confirm_text(
-        client_name: str,
-        master_name: str,
-        service_name: str,
-        slot_starts: datetime,
+    client_name: str,
+    master_name: str,
+    service_name: str,
+    slot_starts: datetime,
 ) -> str:
     """Текст подтверждения записи, показываемый клиенту."""
     local = slot_starts.astimezone(_salon_tz())

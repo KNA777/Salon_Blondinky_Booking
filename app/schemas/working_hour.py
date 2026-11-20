@@ -1,6 +1,13 @@
 from datetime import time
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 
 class WorkingHourBase(BaseModel):
@@ -12,7 +19,7 @@ class WorkingHourBase(BaseModel):
     @classmethod
     def parse_time_without_seconds(cls, v):
         # Если пришла строка в формате "ЧЧ:ММ", добавляем секунды для Pydantic
-        if isinstance(v, str) and len(v) == 5 and v[2] == ':':
+        if isinstance(v, str) and len(v) == 5 and v[2] == ":":
             return v + ":00"
         return v
 
@@ -35,9 +42,9 @@ class WorkingHourUpdate(BaseModel):
     @model_validator(mode="after")
     def check_end_after_start(self) -> "WorkingHourUpdate":
         if (
-                self.start_time is not None
-                and self.end_time is not None
-                and self.end_time <= self.start_time
+            self.start_time is not None
+            and self.end_time is not None
+            and self.end_time <= self.start_time
         ):
             raise ValueError("end_time должно быть позже start_time")
         return self

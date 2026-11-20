@@ -1,5 +1,6 @@
 from sqlalchemy import select
 
+from app.core.security import hash_password
 from app.models import ClientORM
 from app.patterns.mapper.clients import ClientMapper
 from app.patterns.repository.base import BaseRepository
@@ -32,3 +33,22 @@ class ClientRepository(BaseRepository):
             if existing is not None:
                 return existing
         return await self.create(data)
+
+    async def get_by_phone(self, phone: str) -> ClientORM | None:
+        """Найти клиента по телефону (для входа). Возвращает ORM-объект — нужен password_hash."""
+        result = await self.session.execute(select(self.model).where(self.model.phone == phone))
+        return result.scalars().first()
+
+    async def create_with_password(self, data: ClientCreate, password: str) -> ClientOut:
+        """Создать клиента с учётной записью: пароль хешируется и сохраняется в BCrypt."""
+        payload = data.model_dump()
+        payload["password_hash"] = hash_password(password)
+        return await self.create_from_mapping(payload)
+
+    async def create_from_mapping(self, payload: dict) -> ClientOut:
+        """Создать клиента из словаря (нужно для полей, которых нет в схеме ClientCreate)."""
+        obj = self.model(**payload)
+        self.session.add(obj)
+        await self.session.commit()
+        await self.session.refresh(obj)
+        return self.mapper.from_alchemy_to_schema(obj)

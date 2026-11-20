@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.deps import DBDep
+from app.api.deps import CurrentAdminDep, DBDep
 from app.schemas.working_hour import WorkingHourCreate, WorkingHourUpdate
 
 router = APIRouter(tags=["Working Hours"])
@@ -12,7 +12,10 @@ async def get_working_hours(db: DBDep, master_id: int):
 
 
 @router.post("/masters/{master_id}/working-hours")
-async def add_working_hour(db: DBDep, master_id: int, data: WorkingHourCreate):
+async def add_working_hour(
+    db: DBDep, master_id: int, data: WorkingHourCreate, _admin: CurrentAdminDep
+):
+    """Добавить рабочие часы мастеру (только админ)."""
     return await db.working_hours.create_for_master(master_id, data)
 
 
@@ -22,7 +25,9 @@ async def change_working_hour(
     master_id: int,
     working_hour_id: int,
     data: WorkingHourUpdate,
+    _admin: CurrentAdminDep,
 ):
+    """Изменить рабочие часы (только админ)."""
     return await db.working_hours.change_object(
         data,
         id=working_hour_id,
@@ -32,6 +37,12 @@ async def change_working_hour(
 
 
 @router.delete("/masters/{master_id}/working-hours/{working_hour_id}")
-async def remove_working_hour(db: DBDep, master_id: int, working_hour_id: int):
+async def remove_working_hour(
+    db: DBDep,
+    master_id: int,
+    working_hour_id: int,
+    _admin: CurrentAdminDep,
+):
+    """Удалить рабочие часы (только админ)."""
     await db.working_hours.delete(id=working_hour_id, master_id=master_id)
     return {"status": "OK"}

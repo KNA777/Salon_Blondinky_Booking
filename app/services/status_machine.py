@@ -48,9 +48,7 @@ def is_transition_allowed(
     return next_status in TRANSITIONS.get(current, frozenset())
 
 
-def validate_transition(
-    current: AppointmentStatusEnum, next_status: AppointmentStatusEnum
-) -> None:
+def validate_transition(current: AppointmentStatusEnum, next_status: AppointmentStatusEnum) -> None:
     """Проверяет переход и кидает InvalidTransitionError, если он запрещён.
 
     Используется при смене статуса записи: сначала валидируем граф, и только потом

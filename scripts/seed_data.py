@@ -34,7 +34,6 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-import app.models  # noqa: E402  (регистрирует все таблицы в BaseORM.metadata)
 from app.core.config import get_settings  # noqa: E402
 from app.models import (  # noqa: E402
     MasterORM,
@@ -170,7 +169,8 @@ def _parse_time(value: str):
 
 async def _reset_tables(session) -> None:
     """Очищает демо-таблицы, чтобы --drop-запуск стартовал с чистого листа."""
-    # TRUNCATE ... CASCADE чистит и зависимые записи (master_services, RESTART IDENTITY обнуляет id).
+    # TRUNCATE ... CASCADE чистит и зависимые записи
+    # (master_services, RESTART IDENTITY обнуляет id).
     tables = ", ".join(t.__tablename__ for t in _DROP_ORDER)
     await session.execute(text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE"))
     await session.commit()

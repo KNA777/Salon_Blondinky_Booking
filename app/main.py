@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -9,45 +10,78 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.api import main_router
 from app.api.health import router as health_router
 from app.core.config import get_settings
-from app.core.exceptions import InvalidTransitionError, NotFoundError, SlotConflictError
+from app.core.exceptions import (
+    InvalidTransitionError,
+    NotFoundError,
+    PermissionError,
+    SlotConflictError,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Код до `yield` выполняется при старте приложения, после `yield` — при остановке.
-
-    Тяжёлые объекты (пул соединений с БД, клиент Redis) создаём один раз здесь,
-    а не на каждый запрос: соединения дорого открывать, их нужно переиспользовать.
-    """
+    """Код до `yield` выполняется при старте приложения, после `yield` — при остановке."""
     settings = get_settings()
+    logger.info("🚀 Запуск приложения: инициализация ресурсов...")
 
-    # pool_pre_ping: перед выдачей соединения из пула проверяет, что оно живое.
-    # Без этого после перезапуска Postgres первый запрос упал бы на «мёртвом» соединении.
+    # --- База данных ---
+    logger.info("Подключение к базе данных: %s", settings.database_url)
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
-
-    # expire_on_commit=False: после commit объекты остаются доступны.
-    # В async-коде обращение к «протухшему» объекту вызвало бы скрытый запрос в БД и ошибку.
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    logger.info("✅ Пул соединений с БД создан.")
+
+    # --- Redis ---
+    logger.info("Подключение к Redis: %s:%s", settings.redis_host, settings.redis_port)
     app.state.redis = Redis(
         host=settings.redis_host,
         port=settings.redis_port,
-        decode_responses=True,  # получаем строки (str), а не байты
+        decode_responses=True,
     )
+    logger.info("✅ Клиент Redis создан.")
 
-    # Webhook-режим: если задан webhook_url и токен, поднимаем Dispatcher внутри FastAPI.
-    # Состояние FSM при этом хранится в Redis (см. RedisBookingStorage) — оно должно быть
-    # доступно из любого воркера, а не только из одного процесса.
+    # --- Бот и Dispatcher ---
     app.state.bot = None
     app.state.dispatcher = None
-    if settings.use_webhook:
-        await _setup_webhook(app, settings)
 
+    if settings.use_webhook:
+        logger.info("Режим webhook включён. Настройка бота и вебхука...")
+        try:
+            await _setup_webhook(app, settings)
+            logger.info("✅ Бот и Dispatcher успешно инициализированы.")
+            logger.info("🌐 Webhook URL: %s", settings.webhook_url)
+        except Exception as e:
+            logger.exception("❌ Ошибка при настройке webhook: %s", e)
+            raise  # Пробрасываем ошибку, чтобы приложение не запустилось в нерабочем состоянии
+    else:
+        logger.info("Режим webhook отключён (use_webhook=False). Бот не будет запущен в FastAPI.")
+
+    logger.info("🎉 Приложение готово к работе.")
     yield
 
+    # --- Остановка ---
+    logger.info("🛑 Остановка приложения: освобождение ресурсов...")
+
     if app.state.bot is not None:
+        logger.info("Закрытие сессии бота...")
         await app.state.bot.session.close()
+        logger.info("✅ Сессия бота закрыта.")
+
+    logger.info("Закрытие клиента Redis...")
     await app.state.redis.aclose()
+    logger.info("✅ Клиент Redis закрыт.")
+
+    logger.info("Освобождение пула соединений с БД...")
     await engine.dispose()
+    logger.info("✅ Пул соединений с БД освобождён.")
+
+    logger.info("👋 Приложение остановлено.")
 
 
 async def _setup_webhook(app: FastAPI, settings) -> None:
@@ -86,11 +120,15 @@ async def invalid_transition_exception_handler(
 
 
 @app.exception_handler(SlotConflictError)
-async def slot_conflict_exception_handler(
-    request: Request, exc: SlotConflictError
-) -> JSONResponse:
+async def slot_conflict_exception_handler(request: Request, exc: SlotConflictError) -> JSONResponse:
     """Занятый слот (двойная запись) -> HTTP 409 Conflict."""
     return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(PermissionError)
+async def permission_exception_handler(request: Request, exc: PermissionError) -> JSONResponse:
+    """Попытка управлять чужой записью без прав -> HTTP 403 Forbidden."""
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
 
 
 app.include_router(health_router)

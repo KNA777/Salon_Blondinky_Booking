@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, String
+from sqlalchemy import BigInteger, Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseORM, CreatedAtMixin
@@ -20,5 +20,14 @@ class ClientORM(CreatedAtMixin, BaseORM):
     # может завести клиента вручную (например, того, кто позвонил по телефону).
     # В unique-колонке Postgres допускает много NULL, так что таких клиентов может быть много.
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+
+    # Храним только bcrypt-хеш, никогда — сам пароль. Пусто для «ручных» клиентов,
+    # которые не входили через приложение/бот и не имеют учётной записи.
+    password_hash: Mapped[str | None] = mapped_column(String(128))
+
+    # Флаг администратора: админ может управлять любыми записями, клиент — только своими.
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     appointments: Mapped[list["AppointmentORM"]] = relationship(back_populates="client")

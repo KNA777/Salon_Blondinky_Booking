@@ -23,9 +23,7 @@ BLOCKING_STATUSES = [
 ]
 
 
-def overlaps(
-    a_start: datetime, a_end: datetime, b_start: datetime, b_end: datetime
-) -> bool:
+def overlaps(a_start: datetime, a_end: datetime, b_start: datetime, b_end: datetime) -> bool:
     """Пересечение двух полуинтервалов [start, end)."""
     return a_start < b_end and a_end > b_start
 

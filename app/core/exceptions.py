@@ -29,3 +29,15 @@ class SlotConflictError(Exception):
     def __init__(self, detail: str = "Слот уже занят") -> None:
         self.detail = detail
         super().__init__(detail)
+
+
+class PermissionError(Exception):
+    """Запись принадлежит другому клиенту, и текущий пользователь не может ей управлять.
+
+    Обработчик в main.py отвечает HTTP 403 Forbidden. Возникает, когда не-админ пытается
+    отменить/перенести/изменить чужую запись (проверка владения по client_id).
+    """
+
+    def __init__(self, detail: str = "Недостаточно прав для этой операции") -> None:
+        self.detail = detail
+        super().__init__(detail)
