@@ -73,6 +73,14 @@ class Settings(BaseSettings):
     # Как часто планировщик проверяет, кому пора слать напоминание (в секундах).
     reminder_poll_interval_seconds: int = 60
 
+    # --- Наблюдаемость (задача 27) ---
+    # DSN проекта в Sentry. Если не задан, Sentry не инициализируется и приложение
+    # работает с обычным structlog-логированием.
+    sentry_dsn: str | None = None
+    # Доля трассировок, отправляемых в Sentry (0.0–1.0). В dev можно 0, в prod — 1.0
+    # или меньше для экономии квоты.
+    sentry_traces_sample_rate: float = 0.1
+
     @model_validator(mode="after")
     def _enforce_production_safety(self) -> "Settings":
         """Запрещает запуск продакшена с небезопасными настройками.

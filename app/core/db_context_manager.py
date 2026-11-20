@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.patterns.repository.appointments import AppointmentRepository
 from app.patterns.repository.clients import ClientRepository
 from app.patterns.repository.masters import MasterRepository
+from app.patterns.repository.payments import PaymentRepository
 from app.patterns.repository.services import ServiceRepository
 from app.patterns.repository.working_hours import WorkingHourRepository
 
@@ -49,6 +50,7 @@ class DBManager:
         self.working_hours: WorkingHourRepository = WorkingHourRepository(self.session)
         self.clients: ClientRepository = ClientRepository(self.session)
         self.appointments: AppointmentRepository = AppointmentRepository(self.session)
+        self.payments: PaymentRepository = PaymentRepository(self.session)
 
         return self
 

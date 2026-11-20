@@ -18,6 +18,7 @@ from app.core.config import get_settings
 from app.core.db_context_manager import DBManager
 from app.schemas.appointment import AppointmentCreate
 from app.schemas.master import MasterOut
+from app.schemas.payment import PaymentCreate
 from app.schemas.service import ServiceOut
 from app.services.slots import get_free_slots
 
@@ -194,4 +195,33 @@ async def confirm_text(
         f"Мастер: {master_name}\n"
         f"Дата и время: {local.strftime('%d.%m.%Y %H:%M')}\n\n"
         f"Ждём вас, {client_name}!"
+    )
+
+
+async def create_prepayment(db: DBManager, appointment_id: int) -> tuple[int, str]:
+    """Создаёт намерение предоплаты за запись и возвращает (payment_id, сумма).
+
+    Каркас задачи 18: фиксируем в БД намерение оплатить (PaymentORM в статусе pending)
+    и отдаём сумму для показа в кнопке. Реальную оплату затем выполняет провайдер
+    (Telegram Payments sendInvoice / ЮKassa), по подтверждению — статус -> paid.
+    """
+    appointment = await db.appointments.get_one_by_id(id=appointment_id)
+    payment = await db.payments.create_payment(
+        PaymentCreate(appointment_id=appointment_id, amount=appointment.price)
+    )
+    return payment.id, f"{appointment.price:.2f}"
+
+
+def prepayment_keyboard(payment_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура предоплаты: кнопка «Оплатить» и «Позже».
+
+    callback_data: `pay:<payment_id>` — запускает (в каркасе — имитирует) оплату.
+    """
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="💳 Оплатить", callback_data=f"pay:{payment_id}"),
+                InlineKeyboardButton(text="Позже", callback_data="pay_later"),
+            ]
+        ]
     )

@@ -25,6 +25,9 @@ if str(_PROJECT_ROOT) not in sys.path:
 from app.bot.dispatcher import build_dispatcher  # noqa: E402
 from app.bot.storage import InMemoryBookingStorage  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
+from app.core.logging import configure_logging, get_logger  # noqa: E402
+
+logger = get_logger(__name__)
 
 
 def require_token(token: str | None) -> str:
@@ -41,6 +44,7 @@ def require_token(token: str | None) -> str:
 
 async def main() -> None:
     settings = get_settings()
+    configure_logging(settings)
     token = require_token(settings.bot_token)
 
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)

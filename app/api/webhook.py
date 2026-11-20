@@ -9,12 +9,16 @@
 
 import hmac
 
+from aiogram.exceptions import TelegramAPIError
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
 from app.core.config import get_settings
+from app.core.logging import get_logger
 
 router = APIRouter(tags=["Webhook"])
+
+logger = get_logger(__name__)
 
 # Имя заголовка, которым Telegram подписывает webhook-запросы (см. setWebhook secret_token).
 SECRET_HEADER = "X-Telegram-Bot-Api-Secret-Token"
@@ -104,6 +108,14 @@ async def telegram_webhook(
     if await _is_duplicate(redis, _extract_update_id(update)):
         return WebhookResponse()
 
-    await dispatcher.feed_webhook_update(bot, update)
+    try:
+        await dispatcher.feed_webhook_update(bot, update)
+    except TelegramAPIError as exc:
+        # Ошибки Telegram Bot API (например, «message is not modified» при повторной
+        # доставке апдейта) не должны превращаться в HTTP 500: иначе Telegram сочтёт
+        # апдейт необработанным и будет повторять его бесконечно. Логируем и отвечаем ok —
+        # повторную доставку уже отсекает дедупликация по update_id выше.
+        logger.warning("Telegram API error при обработке webhook: %s", exc)
+        return WebhookResponse()
 
     return WebhookResponse()

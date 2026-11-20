@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -19,19 +18,21 @@ from app.core.exceptions import (
     PermissionError,
     SlotConflictError,
 )
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+from app.core.logging import (
+    bind_trace_id,
+    configure_logging,
+    get_logger,
+    new_trace_id,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Код до `yield` выполняется при старте приложения, после `yield` — при остановке."""
     settings = get_settings()
+    configure_logging(settings)
     logger.info("🚀 Запуск приложения: инициализация ресурсов...")
 
     # --- База данных ---
@@ -132,6 +133,28 @@ async def _setup_webhook(app: FastAPI, settings) -> None:
 app = FastAPI(title="Salon Booking", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def trace_id_middleware(request: Request, call_next):
+    """Помечает каждый запрос уникальным trace_id и кладёт его в контекст structlog.
+
+    trace_id связывает все логи одного запроса (и вложенные вызовы) в единый след,
+    по которому его легко найти и в Sentry, и в JSON-логах. Значение также пробрасывается
+    обратно в заголовке X-Trace-Id, чтобы клиент мог сообщить его в баг-репорте.
+    """
+    trace_id = new_trace_id()
+    bind_trace_id(trace_id)
+    request.state.trace_id = trace_id
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("Необработанное исключение при обработке запроса", trace_id=trace_id)
+        raise
+
+    response.headers["X-Trace-Id"] = trace_id
+    return response
+
+
 @app.exception_handler(NotFoundError)
 async def not_found_exception_handler(request: Request, exc: NotFoundError) -> JSONResponse:
     """Превращает «объект не найден» в HTTP 404, а не в 500."""
@@ -173,3 +196,14 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 async def mini_app() -> FileResponse:
     """Отдаёт HTML-страницу Mini App (фронтенд записи клиента)."""
     return FileResponse(_STATIC_DIR / "mini-app.html")
+
+
+@app.get("/admin", include_in_schema=False)
+async def admin_panel() -> FileResponse:
+    """Отдаёт HTML-страницу админ-панели (задача 14).
+
+    Сама страница статичная: вся работа идёт через существующие REST-эндпоинты
+    (вход — /auth/admin/login с httpOnly cookie, данные — /appointments, /masters,
+    /services). Доступ к данным защищён на уровне API (зависимость get_current_admin).
+    """
+    return FileResponse(_STATIC_DIR / "admin.html")

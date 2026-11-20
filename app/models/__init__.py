@@ -11,6 +11,7 @@ from app.models.base import BaseORM
 from app.models.client import ClientORM
 from app.models.master import MasterORM
 from app.models.master_service import master_services
+from app.models.payment import PaymentORM, PaymentProviderEnum, PaymentStatusEnum
 from app.models.service import ServiceORM
 from app.models.working_hour import WorkingHourORM
 
@@ -20,6 +21,9 @@ __all__ = [
     "BaseORM",
     "ClientORM",
     "MasterORM",
+    "PaymentORM",
+    "PaymentProviderEnum",
+    "PaymentStatusEnum",
     "ServiceORM",
     "WorkingHourORM",
     "master_services",

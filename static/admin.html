@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Админ-панель — Запись в салон</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --panel-2: #1e222b;
+      --border: #2a2f3a;
+      --text: #e6e8ec;
+      --muted: #8b93a3;
+      --accent: #4c8dff;
+      --green: #2ecc71;
+      --red: #e74c3c;
+      --amber: #f39c12;
+      --purple: #9b59b6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    a { color: var(--accent); }
+    header {
+      padding: 14px 20px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 17px; margin: 0; }
+    header .who { font-size: 13px; color: var(--muted); }
+    main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+    .tab {
+      padding: 9px 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+    .panel h2 { margin: 0 0 14px; font-size: 16px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+    tr:hover td { background: var(--panel-2); }
+
+    .badge {
+      display: inline-block; padding: 3px 9px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; white-space: nowrap;
+    }
+    .badge.created    { background: rgba(76,141,255,.15); color: var(--accent); }
+    .badge.confirmed  { background: rgba(46,204,113,.15); color: var(--green); }
+    .badge.completed  { background: rgba(155,89,182,.15); color: var(--purple); }
+    .badge.no_show    { background: rgba(231,76,60,.15); color: var(--red); }
+    .badge.cancelled  { background: rgba(139,147,163,.15); color: var(--muted); }
+    .badge.paid       { background: rgba(46,204,113,.18); color: var(--green); }
+    .badge.pending    { background: rgba(243,156,18,.15); color: var(--amber); }
+    .badge.refunded   { background: rgba(139,147,163,.2); color: var(--muted); }
+
+    button {
+      padding: 8px 13px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--panel-2); color: var(--text); font-size: 13px; cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.danger { color: var(--red); }
+    button.done { color: var(--green); }
+
+    input, select {
+      padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--panel-2); color: var(--text); font-size: 14px;
+    }
+    input[type="datetime-local"] { color-scheme: dark; }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+    .stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .stat .n { font-size: 26px; font-weight: 700; }
+    .stat .l { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; padding: 12px 18px; border-radius: 10px;
+      font-size: 14px; display: none; z-index: 100; max-width: 360px;
+    }
+    .toast.ok { background: #174a2a; color: #b7f5cd; border: 1px solid #2ecc71; }
+    .toast.err { background: #4a1717; color: #ffc9c2; border: 1px solid #e74c3c; }
+
+    .login { max-width: 360px; margin: 80px auto; }
+    .login input, .login button { width: 100%; margin-bottom: 10px; }
+    .muted { color: var(--muted); }
+    .hidden { display: none !important; }
+
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .spin { text-align: center; color: var(--muted); padding: 30px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>💇♀️ Админ-панель салона</h1>
+    <div class="who" id="who"></div>
+  </header>
+
+  <main>
+    <!-- Логин -->
+    <section id="login-view" class="login panel hidden">
+      <h2>Вход администратора</h2>
+      <input type="text" id="login-phone" placeholder="Телефон" />
+      <input type="password" id="login-password" placeholder="Пароль" />
+      <button class="primary" onclick="login()">Войти</button>
+      <div class="muted" id="login-msg"></div>
+    </section>
+
+    <!-- Панель -->
+    <section id="app-view" class="hidden">
+      <div class="tabs">
+        <div class="tab active" data-tab="dashboard" onclick="switchTab('dashboard')">Сводка</div>
+        <div class="tab" data-tab="appointments" onclick="switchTab('appointments')">Записи</div>
+        <div class="tab" data-tab="masters" onclick="switchTab('masters')">Мастера</div>
+        <div class="tab" data-tab="services" onclick="switchTab('services')">Услуги</div>
+      </div>
+
+      <!-- Сводка -->
+      <section id="tab-dashboard">
+        <div class="cards" id="stats"></div>
+
+        <div class="panel">
+          <h2>Расписание на день</h2>
+          <div class="row">
+            <input type="date" id="day-date" />
+            <button class="primary" onclick="loadDay()">Показать</button>
+          </div>
+          <div id="day-list" style="margin-top:14px;"></div>
+        </div>
+      </section>
+
+      <!-- Записи -->
+      <section id="tab-appointments" class="hidden">
+        <div class="panel">
+          <h2>Все записи</h2>
+          <div class="row" style="margin-bottom:12px;">
+            <button class="primary" onclick="loadAppointments()">Обновить</button>
+          </div>
+          <div id="appointments-list"></div>
+        </div>
+      </section>
+
+      <!-- Мастера -->
+      <section id="tab-masters" class="hidden">
+        <div class="panel">
+          <h2>Мастера</h2>
+          <div class="row" style="margin-bottom:12px;">
+            <input type="text" id="m-name" placeholder="Имя мастера" />
+            <input type="text" id="m-phone" placeholder="Телефон" />
+            <button class="primary" onclick="createMaster()">Добавить</button>
+          </div>
+          <div id="masters-list"></div>
+        </div>
+      </section>
+
+      <!-- Услуги -->
+      <section id="tab-services" class="hidden">
+        <div class="panel">
+          <h2>Услуги</h2>
+          <div class="row" style="margin-bottom:12px;">
+            <input type="text" id="s-name" placeholder="Название" />
+            <input type="number" id="s-duration" placeholder="Длит., мин" />
+            <input type="number" id="s-price" placeholder="Цена, ₽" step="0.01" />
+            <button class="primary" onclick="createService()">Добавить</button>
+          </div>
+          <div id="services-list"></div>
+        </div>
+      </section>
+
+      <div style="text-align:right; margin-top:10px;">
+        <button class="danger" onclick="logout()">Выйти</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    async function api(path, method = "GET", body) {
+      const opts = { method, credentials: "include", headers: {} };
+      if (body !== undefined) {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      const res = await fetch(path, opts);
+      let data = null;
+      const text = await res.text();
+      if (text) { try { data = JSON.parse(text); } catch { data = text; } }
+      if (res.status === 401) { showLogin(); throw new Error("Не авторизован"); }
+      if (!res.ok) {
+        const msg = data && data.detail ? data.detail : res.statusText;
+        throw new Error(msg);
+      }
+      return data;
+    }
+
+    function toast(msg, ok = true) {
+      const t = $("toast");
+      t.textContent = msg;
+      t.className = "toast " + (ok ? "ok" : "err");
+      t.style.display = "block";
+      clearTimeout(t._h);
+      t._h = setTimeout(() => { t.style.display = "none"; }, 3200);
+    }
+
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s == null ? "" : String(s);
+      return d.innerHTML;
+    }
+
+    function statusBadge(s) { return '<span class="badge ' + esc(s) + '">' + esc(s) + '</span>'; }
+
+    function fmtTime(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (isNaN(d)) return esc(iso);
+      return d.toLocaleString("ru-RU", {
+        day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+      });
+    }
+
+    // --- Auth ---
+    async function login() {
+      $("login-msg").textContent = "";
+      try {
+        await api("/auth/admin/login", "POST", {
+          phone: $("login-phone").value.trim(),
+          password: $("login-password").value,
+        });
+        $("login-password").value = "";
+        await boot();
+      } catch (e) {
+        $("login-msg").textContent = e.message;
+      }
+    }
+
+    async function logout() {
+      try { await api("/auth/logout", "POST"); } catch {}
+      showLogin();
+    }
+
+    function showLogin() {
+      $("app-view").classList.add("hidden");
+      $("login-view").classList.remove("hidden");
+      $("who").textContent = "";
+    }
+
+    async function whoami() {
+      // Нет отдельного /me — определяем по списку клиентов не нужно. Возьмём по cookie:
+      // для отображения имени подойдёт повторный запрос к защищённому эндпоинту.
+      // Минимально: просто покажем, что вход выполнен.
+      return "активен";
+    }
+
+    // --- Loaders ---
+    async function loadStats() {
+      // Записи за сегодня и общее число по статусам.
+      const appts = await api("/appointments");
+      const now = new Date();
+      const today = appts.filter((a) => {
+        const d = new Date(a.starts_at);
+        return d.toDateString() === now.toDateString();
+      });
+      const byStatus = {};
+      const pendingPay = 0; // предоплата — каркас, данных пока нет
+      for (const a of appts) byStatus[a.status] = (byStatus[a.status] || 0) + 1;
+      const el = $("stats");
+      const cards = [
+        ["На сегодня", today.length],
+        ["Всего записей", appts.length],
+        ["Created", byStatus.created || 0],
+        ["Confirmed", byStatus.confirmed || 0],
+        ["Completed", byStatus.completed || 0],
+        ["Отменено", byStatus.cancelled || 0],
+      ];
+      el.innerHTML = cards.map(([l, n]) =>
+        '<div class="stat"><div class="n">' + n + '</div><div class="l">' + esc(l) + "</div></div>"
+      ).join("");
+    }
+
+    async function loadDay() {
+      const day = $("day-date").value;
+      if (!day) { toast("Выберите дату", false); return; }
+      const list = await api("/appointments/admin/day?day=" + day);
+      $("day-list").innerHTML = renderAppointments(list, true);
+    }
+
+    async function loadAppointments() {
+      const list = await api("/appointments");
+      $("appointments-list").innerHTML = renderAppointments(list, false);
+    }
+
+    function renderAppointments(list, compact) {
+      if (!list.length) return '<div class="muted">Нет записей.</div>';
+      const rows = list.map((a) => {
+        const actions =
+          '<div class="actions">' +
+          (a.status === "created" ? '<button class="done" onclick="setStatus(' + a.id + ',\'confirmed\')">Подтвердить</button>' : "") +
+          (a.status === "created" || a.status === "confirmed"
+            ? '<button class="done" onclick="setStatus(' + a.id + ',\'completed\')">Завершить</button>' +
+              '<button onclick="setStatus(' + a.id + ',\'no_show\')">No-show</button>' : "") +
+          (a.status === "created" || a.status === "confirmed"
+            ? '<button class="danger" onclick="setStatus(' + a.id + ',\'cancelled\')">Отменить</button>' : "") +
+          "</div>";
+        return "<tr>" +
+          "<td>#" + a.id + "</td>" +
+          (compact ? "" : "<td>" + esc(a.client_id) + "</td>") +
+          "<td>" + esc(a.master_id) + "</td>" +
+          "<td>" + esc(a.service_id) + "</td>" +
+          "<td>" + fmtTime(a.starts_at) + " – " + fmtTime(a.ends_at) + "</td>" +
+          "<td>" + esc(a.price) + " ₽</td>" +
+          "<td>" + statusBadge(a.status) + "</td>" +
+          "<td>" + actions + "</td>" +
+          "</tr>";
+      }).join("");
+      const head = "<table><thead><tr>" +
+        "<th>ID</th>" + (compact ? "" : "<th>Клиент</th>") +
+        "<th>Мастер</th><th>Услуга</th><th>Время</th><th>Цена</th><th>Статус</th><th></th>" +
+        "</tr></thead><tbody>" + rows + "</tbody></table>";
+      return head;
+    }
+
+    async function setStatus(id, status) {
+      try {
+        await api("/appointments/" + id + "/status", "POST", { status });
+        toast("Статус записи #" + id + " обновлён");
+        loadAppointments();
+        loadStats();
+      } catch (e) { toast(e.message, false); }
+    }
+
+    async function loadMasters() {
+      const list = await api("/masters?include_inactive=true");
+      $("masters-list").innerHTML = list.length
+        ? "<table><thead><tr><th>ID</th><th>Имя</th><th>Телефон</th><th>Активен</th><th>Услуги</th><th></th></tr></thead><tbody>" +
+          list.map((m) => "<tr><td>#" + m.id + "</td><td>" + esc(m.name) + "</td><td>" + esc(m.phone || "—") +
+            "</td><td>" + (m.is_active ? "✓" : "—") + "</td><td>" +
+            (m.services || []).map((s) => esc(s.name)).join(", ") + "</td><td>" +
+            (m.is_active ? '<button class="danger" onclick="deactivateMaster(' + m.id + ')">Деактивировать</button>'
+                        : "") + "</td></tr>").join("") +
+          "</tbody></table>"
+        : '<div class="muted">Нет мастеров.</div>';
+    }
+
+    async function createMaster() {
+      const name = $("m-name").value.trim();
+      if (!name) { toast("Введите имя", false); return; }
+      try {
+        await api("/masters", "POST", {
+          name,
+          phone: $("m-phone").value.trim() || null,
+          service_ids: [],
+        });
+        $("m-name").value = ""; $("m-phone").value = "";
+        toast("Мастер добавлен"); loadMasters();
+      } catch (e) { toast(e.message, false); }
+    }
+
+    async function deactivateMaster(id) {
+      try { await api("/masters/" + id, "POST"); toast("Мастер деактивирован"); loadMasters(); }
+      catch (e) { toast(e.message, false); }
+    }
+
+    async function loadServices() {
+      const list = await api("/services?include_inactive=true");
+      $("services-list").innerHTML = list.length
+        ? "<table><thead><tr><th>ID</th><th>Название</th><th>Длительность</th><th>Цена</th><th>Активна</th><th></th></tr></thead><tbody>" +
+          list.map((s) => "<tr><td>#" + s.id + "</td><td>" + esc(s.name) + "</td><td>" + s.duration_minutes +
+            " мин</td><td>" + esc(s.price) + " ₽</td><td>" + (s.is_active ? "✓" : "—") + "</td><td>" +
+            (s.is_active ? '<button class="danger" onclick="deactivateService(' + s.id + ')">Деактивировать</button>'
+                        : "") + "</td></tr>").join("") +
+          "</tbody></table>"
+        : '<div class="muted">Нет услуг.</div>';
+    }
+
+    async function createService() {
+      const name = $("s-name").value.trim();
+      if (!name) { toast("Введите название", false); return; }
+      try {
+        await api("/services", "POST", {
+          name,
+          duration_minutes: parseInt($("s-duration").value || "0", 10),
+          price: $("s-price").value || "0",
+        });
+        $("s-name").value = ""; $("s-duration").value = ""; $("s-price").value = "";
+        toast("Услуга добавлена"); loadServices();
+      } catch (e) { toast(e.message, false); }
+    }
+
+    async function deactivateService(id) {
+      try { await api("/services/" + id, "POST"); toast("Услуга деактивирована"); loadServices(); }
+      catch (e) { toast(e.message, false); }
+    }
+
+    // --- Tabs ---
+    function switchTab(name) {
+      document.querySelectorAll(".tab").forEach((t) =>
+        t.classList.toggle("active", t.dataset.tab === name));
+      ["dashboard", "appointments", "masters", "services"].forEach((n) =>
+        $("tab-" + n).classList.toggle("hidden", n !== name));
+      if (name === "dashboard") { loadStats(); }
+      if (name === "appointments") { loadAppointments(); }
+      if (name === "masters") { loadMasters(); }
+      if (name === "services") { loadServices(); }
+    }
+
+    async function boot() {
+      // Проверяем авторизацию по защищённому эндпоинту.
+      try {
+        await api("/appointments/admin/day?day=" + new Date().toISOString().slice(0, 10));
+        $("login-view").classList.add("hidden");
+        $("app-view").classList.remove("hidden");
+        $("who").textContent = "Администратор";
+        $("day-date").value = new Date().toISOString().slice(0, 10);
+        switchTab("dashboard");
+      } catch {
+        showLogin();
+        $("day-date").value = new Date().toISOString().slice(0, 10);
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>

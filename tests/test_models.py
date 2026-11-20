@@ -15,6 +15,7 @@ def test_all_tables_registered():
         "clients",
         "working_hours",
         "appointments",
+        "payments",
     }
 
 

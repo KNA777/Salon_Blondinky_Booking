@@ -215,6 +215,7 @@ async def clean_db(session_factory) -> AsyncIterator[None]:
     async with session_factory() as session:
         # Порядок важен из-за внешних ключей с RESTRICT.
         for table in (
+            "payments",
             "appointments",
             "master_services",
             "working_hours",

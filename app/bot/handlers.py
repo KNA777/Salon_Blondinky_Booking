@@ -8,8 +8,9 @@ callback, извлекает данные, вызывает логику и от
 from datetime import date, datetime
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.filters import Command, CommandStart
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
 from app.bot import fsm
 from app.bot.states import BookingState
@@ -32,6 +33,39 @@ def _message_from_query(query: CallbackQuery) -> Message:
     if not isinstance(message, Message):
         raise RuntimeError("Callback без редактируемого сообщения (InaccessibleMessage/None)")
     return message
+
+
+async def _safe_edit(
+    query: CallbackQuery,
+    text: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> None:
+    """Безопасно редактирует сообщение, игнорируя «невалидные» ошибки Telegram.
+
+    При повторной доставке одного и того же апдейта (Telegram повторяет запрос, если не
+    получил ответ, или пользователь долго не отвечает на inline-кнопку) вызовы ``edit_text``
+    и ``answer`` могут упасть с ``TelegramBadRequest``: «message is not modified» (тот же
+    текст/кнопки) или «query is too old» (устаревший callback). Это не ошибка сценария, а
+    нормальное следствие идемпотентной повторной обработки — поэтому молча игнорируем их,
+    а не роняем вебхук с HTTP 500 и не заставляем Telegram повторять апдейт бесконечно.
+    """
+    try:
+        await _message_from_query(query).edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest:
+        # Текст/разметка не изменились либо callback устарел — ничего делать не нужно.
+        pass
+
+
+async def _safe_answer(query: CallbackQuery) -> None:
+    """Безопасно закрывает всплывающее уведомление (закрывает loading).
+
+    ``answer()`` у устаревшего callback тоже бросает ``TelegramBadRequest`` (query is too
+    old); эту ошибку нужно глушить, иначе повторная доставка апдейта упадёт с 500.
+    """
+    try:
+        await query.answer()
+    except (TelegramBadRequest, TelegramRetryAfter):
+        pass
 
 
 # --- Текстовые команды ---------------------------------------------------------
@@ -101,10 +135,8 @@ def _callback_payload(query: CallbackQuery) -> str:
 async def cb_cancel(query: CallbackQuery, storage: BookingStorage) -> None:
     """Обработать кнопку «Отмена»: сбросить состояние и сообщить пользователю."""
     await storage.reset(_telegram_id_from_query(query))
-    await _message_from_query(query).edit_text(
-        "Запись отменена. Напишите /start, чтобы начать заново."
-    )
-    await query.answer()
+    await _safe_edit(query, "Запись отменена. Напишите /start, чтобы начать заново.")
+    await _safe_answer(query)
 
 
 @router.callback_query(F.data.startswith("service:"))
@@ -116,8 +148,8 @@ async def cb_service(query: CallbackQuery, db: DBManager, storage: BookingStorag
     await storage.save(user_id, service_id=service_id)
 
     keyboard = await fsm.masters_keyboard(db, service_id)
-    await _message_from_query(query).edit_text("Теперь выберите мастера 👇", reply_markup=keyboard)
-    await query.answer()
+    await _safe_edit(query, "Теперь выберите мастера 👇", reply_markup=keyboard)
+    await _safe_answer(query)
 
 
 @router.callback_query(F.data.startswith("master:"))
@@ -129,8 +161,8 @@ async def cb_master(query: CallbackQuery, storage: BookingStorage) -> None:
     await storage.save(user_id, master_id=master_id)
 
     keyboard = fsm.day_keyboard()
-    await _message_from_query(query).edit_text("Выберите дату 👇", reply_markup=keyboard)
-    await query.answer()
+    await _safe_edit(query, "Выберите дату 👇", reply_markup=keyboard)
+    await _safe_answer(query)
 
 
 @router.callback_query(F.data.startswith("day:"))
@@ -146,8 +178,8 @@ async def cb_day(query: CallbackQuery, db: DBManager, storage: BookingStorage) -
         raise RuntimeError("В контексте записи нет master_id/service_id перед выбором слота")
     day = date.fromisoformat(day_text)
     keyboard = await fsm.slots_keyboard(db, ctx.master_id, ctx.service_id, day)
-    await _message_from_query(query).edit_text("Свободное время 👇", reply_markup=keyboard)
-    await query.answer()
+    await _safe_edit(query, "Свободное время 👇", reply_markup=keyboard)
+    await _safe_answer(query)
 
 
 @router.callback_query(F.data.startswith("slot:"))
@@ -167,11 +199,13 @@ async def cb_slot(query: CallbackQuery, db: DBManager, storage: BookingStorage) 
         service = await db.services.get_one_by_id(id=ctx.service_id)
         client = await db.clients.get_one_by_id(id=ctx.client_id)
         text = await fsm.confirm_text(client.name, master.name, service.name, starts_at)
-        await _message_from_query(query).edit_text(text)
-        await query.answer()
+        await _safe_edit(query, text)
+        await _safe_answer(query)
         return
 
-    await fsm.create_appointment(db, ctx.client_id, ctx.master_id, ctx.service_id, starts_at)
+    appointment_id = await fsm.create_appointment(
+        db, ctx.client_id, ctx.master_id, ctx.service_id, starts_at
+    )
 
     master = await db.masters.get_one_with_services(ctx.master_id)
     service = await db.services.get_one_by_id(id=ctx.service_id)
@@ -179,9 +213,16 @@ async def cb_slot(query: CallbackQuery, db: DBManager, storage: BookingStorage) 
 
     text = await fsm.confirm_text(client.name, master.name, service.name, starts_at)
 
+    # Предоплата (задача 18, каркас): создаём намерение оплатить и показываем кнопку.
+    # Реальная оплата — у провайдера; здесь кнопка ведёт на имитацию оплаты.
+    payment_id, amount = await fsm.create_prepayment(db, appointment_id)
+    text += f"\n\n💳 Предоплата {amount} ₽ — нажмите «Оплатить»."
+
     await storage.set_state(user_id, BookingState.DONE)
-    await _message_from_query(query).edit_text(text)
-    await query.answer()
+    await _safe_edit(
+        query, text, reply_markup=fsm.prepayment_keyboard(payment_id)
+    )
+    await _safe_answer(query)
 
 
 @router.callback_query(F.data == "back_to_service")
@@ -190,8 +231,8 @@ async def cb_back_to_service(query: CallbackQuery, db: DBManager, storage: Booki
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_SERVICE)
     keyboard = await fsm.services_keyboard(db)
-    await _message_from_query(query).edit_text("Выберите услугу 👇", reply_markup=keyboard)
-    await query.answer()
+    await _safe_edit(query, "Выберите услугу 👇", reply_markup=keyboard)
+    await _safe_answer(query)
 
 
 @router.callback_query(F.data == "back_to_master")
@@ -203,8 +244,8 @@ async def cb_back_to_master(query: CallbackQuery, db: DBManager, storage: Bookin
         raise RuntimeError("В контексте записи нет service_id перед выбором мастера")
     await storage.set_state(user_id, BookingState.CHOOSE_MASTER)
     keyboard = await fsm.masters_keyboard(db, ctx.service_id)
-    await _message_from_query(query).edit_text("Выберите мастера 👇", reply_markup=keyboard)
-    await query.answer()
+    await _safe_edit(query, "Выберите мастера 👇", reply_markup=keyboard)
+    await _safe_answer(query)
 
 
 @router.callback_query(F.data == "back_to_date")
@@ -213,5 +254,33 @@ async def cb_back_to_date(query: CallbackQuery, storage: BookingStorage) -> None
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_DATE)
     keyboard = fsm.day_keyboard()
-    await _message_from_query(query).edit_text("Выберите дату 👇", reply_markup=keyboard)
-    await query.answer()
+    await _safe_edit(query, "Выберите дату 👇", reply_markup=keyboard)
+    await _safe_answer(query)
+
+
+@router.callback_query(F.data.startswith("pay:"))
+async def cb_pay(query: CallbackQuery, db: DBManager) -> None:
+    """Кнопка «Оплатить» (задача 18, каркас).
+
+    Реальная оплата выполняется провайдером (Telegram Payments sendInvoice / ЮKassa).
+    В каркасе имитируем начало оплаты: показываем, что платёж создан и ожидает
+    подтверждения от провайдера. Статус записи о предоплате остаётся pending до
+    вебхука провайдера, который переведёт его в paid.
+    """
+    payment_id = int(_callback_payload(query))
+    await db.payments.get_by_appointment_and_id(payment_id)
+    await _safe_edit(
+        query,
+        "💳 Оплата подключена.\n\n"
+        "В каркасе реальный платёжный провайдер ещё не подключён: после интеграции "
+        "Telegram Payments / ЮKassa здесь будет инициироваться настоящий инвойс.\n\n"
+        "Сумма предоплаты зафиксирована — статус обновится автоматически после оплаты.",
+    )
+    await _safe_answer(query)
+
+
+@router.callback_query(F.data == "pay_later")
+async def cb_pay_later(query: CallbackQuery) -> None:
+    """Кнопка «Позже»: пропустить оплату, запись остаётся."""
+    await _safe_edit(query, "Хорошо, оплатить можно позже. До встречи! 💇‍♀️")
+    await _safe_answer(query)

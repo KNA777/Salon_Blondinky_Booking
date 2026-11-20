@@ -11,6 +11,7 @@ from app.models.base import BaseORM, CreatedAtMixin
 if TYPE_CHECKING:
     from app.models.client import ClientORM
     from app.models.master import MasterORM
+    from app.models.payment import PaymentORM
     from app.models.service import ServiceORM
 
 
@@ -75,3 +76,4 @@ class AppointmentORM(CreatedAtMixin, BaseORM):
     client: Mapped["ClientORM"] = relationship(back_populates="appointments")
     master: Mapped["MasterORM"] = relationship(back_populates="appointments")
     service: Mapped["ServiceORM"] = relationship(back_populates="appointments")
+    payment: Mapped["PaymentORM | None"] = relationship(back_populates="appointment", uselist=False)
