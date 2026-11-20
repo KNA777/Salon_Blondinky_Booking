@@ -151,6 +151,18 @@ async def cb_slot(query: CallbackQuery, db: DBManager, storage: BookingStorage) 
         raise RuntimeError("В контексте записи не хватает client_id/master_id/service_id")
     starts_at = datetime.fromisoformat(_callback_payload(query))
 
+    # Идемпотентность повторного нажатия: если запись уже завершена (state == DONE),
+    # это повторный клик по кнопке слота (двойное нажатие/повторный апдейт). Не создаём
+    # вторую запись, а просто отвечаем тем же текстом подтверждения.
+    if ctx.state == BookingState.DONE:
+        master = await db.masters.get_one_with_services(ctx.master_id)
+        service = await db.services.get_one_by_id(id=ctx.service_id)
+        client = await db.clients.get_one_by_id(id=ctx.client_id)
+        text = await fsm.confirm_text(client.name, master.name, service.name, starts_at)
+        await _message_from_query(query).edit_text(text)
+        await query.answer()
+        return
+
     await fsm.create_appointment(db, ctx.client_id, ctx.master_id, ctx.service_id, starts_at)
 
     master = await db.masters.get_one_with_services(ctx.master_id)

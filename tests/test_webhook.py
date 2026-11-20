@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.webhook import _secret_matches
+from app.api.webhook import _extract_update_id, _is_duplicate, _secret_matches
 from app.bot.states import BookingState
 from app.bot.storage import BookingContext, RedisBookingStorage
 from app.core.config import get_settings
@@ -116,3 +116,60 @@ def test_redis_serialize_default_context():
 def test_redis_key_format():
     storage = RedisBookingStorage(SimpleNamespace(), key_prefix="booking")
     assert storage._key(42) == "booking:42"
+
+
+# --- идемпотентность webhook: дедупликация update_id (задача 12) -----------------
+
+
+def test_extract_update_id():
+    assert _extract_update_id({"update_id": 12345, "message": {}}) == 12345
+
+
+def test_extract_update_id_missing():
+    assert _extract_update_id({"message": {}}) is None
+
+
+def test_extract_update_id_not_dict():
+    assert _extract_update_id([1, 2, 3]) is None
+
+
+class _FakeRedis:
+    """Минимальный Redis-стаб для теста дедупликации: эмулирует SET NX EX в памяти."""
+
+    def __init__(self) -> None:
+        self._keys: dict[str, str] = {}
+
+    async def set(self, key, value, nx: bool = False, ex: int | None = None):
+        # Возвращаем True, если ключа не было (записан впервые), иначе False.
+        if nx and key in self._keys:
+            return False
+        self._keys[key] = value
+        return True
+
+
+async def test_is_duplicate_first_call_is_not_duplicate():
+    redis = _FakeRedis()
+    assert await _is_duplicate(redis, 100) is False
+
+
+async def test_is_duplicate_second_call_is_duplicate():
+    redis = _FakeRedis()
+    await _is_duplicate(redis, 100)
+    # Повторный update_id -> True (уже обработан).
+    assert await _is_duplicate(redis, 100) is True
+
+
+async def test_is_duplicate_different_ids_independent():
+    redis = _FakeRedis()
+    await _is_duplicate(redis, 100)
+    assert await _is_duplicate(redis, 101) is False
+
+
+async def test_is_duplicate_without_update_id_is_not_duplicate():
+    redis = _FakeRedis()
+    assert await _is_duplicate(redis, None) is False
+
+
+async def test_is_duplicate_without_redis_disabled():
+    # Без Redis дедупликация отключается, чтобы не терять апдейты в dev-режиме.
+    assert await _is_duplicate(None, 100) is False
