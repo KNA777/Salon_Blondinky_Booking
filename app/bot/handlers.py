@@ -219,9 +219,7 @@ async def cb_slot(query: CallbackQuery, db: DBManager, storage: BookingStorage) 
     text += f"\n\n💳 Предоплата {amount} ₽ — нажмите «Оплатить»."
 
     await storage.set_state(user_id, BookingState.DONE)
-    await _safe_edit(
-        query, text, reply_markup=fsm.prepayment_keyboard(payment_id)
-    )
+    await _safe_edit(query, text, reply_markup=fsm.prepayment_keyboard(payment_id))
     await _safe_answer(query)
 
 
