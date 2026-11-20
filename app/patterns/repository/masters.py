@@ -4,10 +4,10 @@ from sqlalchemy.orm import selectinload
 from app.models import MasterORM, master_services
 from app.patterns.mapper.masters import MasterMapper
 from app.patterns.repository.base import BaseRepository
-from app.schemas.master import MasterAdd, MasterCreate, MasterService
+from app.schemas.master import MasterAdd, MasterCreate, MasterOut, MasterService
 
 
-class MasterRepository(BaseRepository):
+class MasterRepository(BaseRepository[MasterOut]):
     model = MasterORM
     mapper = MasterMapper
 

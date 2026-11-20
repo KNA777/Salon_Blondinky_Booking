@@ -108,7 +108,8 @@ class RedisBookingStorage:
         raw = await self._redis.get(self._key(user_id))
         if raw is None:
             return BookingContext()
-        return self._deserialize(raw)
+        text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+        return self._deserialize(text)
 
     async def save(self, user_id: int, **fields) -> None:
         ctx = await self.get_context(user_id)

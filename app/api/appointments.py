@@ -47,7 +47,7 @@ async def get_appointment_by_id(db: DBDep, appointment_id: int):
 async def get_appointments_by_day(
     db: DBDep,
     day: Annotated[date, Query(description="Дата в часовом поясе салона (YYYY-MM-DD)")],
-    _admin: CurrentAdminDep = None,
+    _admin: CurrentAdminDep,
 ):
     """Админский просмотр расписания на конкретный день (задача 14).
 

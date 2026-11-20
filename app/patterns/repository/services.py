@@ -3,9 +3,10 @@ from sqlalchemy import select
 from app.models import ServiceORM
 from app.patterns.mapper.services import ServiceMapper
 from app.patterns.repository.base import BaseRepository
+from app.schemas.service import ServiceOut
 
 
-class ServiceRepository(BaseRepository):
+class ServiceRepository(BaseRepository[ServiceOut]):
     model = ServiceORM
     mapper = ServiceMapper
 

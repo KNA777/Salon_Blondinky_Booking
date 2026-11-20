@@ -20,15 +20,32 @@ from app.schemas.client import ClientCreate
 router = Router(name="booking")
 
 
+def _message_from_query(query: CallbackQuery) -> Message:
+    """Достаёт редактируемое сообщение из callback.
+
+    В личных чатах query.message — это обычный Message. aiogram помечает его как
+    `Message | InaccessibleMessage | None` (для каналов/старых сообщений), но для записи
+    клиента нам нужно именно редактируемое сообщение — иначе просто нечего обновлять.
+    Поднимаем ошибку, а не молча пропускаем: молчание скрыло бы реальный сбой сценария.
+    """
+    message = query.message
+    if not isinstance(message, Message):
+        raise RuntimeError("Callback без редактируемого сообщения (InaccessibleMessage/None)")
+    return message
+
+
 # --- Текстовые команды ---------------------------------------------------------
 
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, db: DBManager, storage: BookingStorage) -> None:
     """Начало: регистрируем/находим клиента по telegram_id и предлагаем выбрать услугу."""
-    user_id = message.from_user.id
+    from_user = message.from_user
+    if from_user is None:
+        return
+    user_id = from_user.id
     client = await db.clients.upsert_by_telegram_id(
-        ClientCreate(name=message.from_user.full_name or "Клиент", telegram_id=user_id)
+        ClientCreate(name=from_user.full_name or "Клиент", telegram_id=user_id)
     )
 
     await storage.reset(user_id)
@@ -51,7 +68,10 @@ async def cmd_help(message: Message) -> None:
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, storage: BookingStorage) -> None:
-    await storage.reset(message.from_user.id)
+    from_user = message.from_user
+    if from_user is None:
+        return
+    await storage.reset(from_user.id)
     await message.answer("Запись отменена. Напишите /start, чтобы начать заново.")
 
 
@@ -62,48 +82,64 @@ def _telegram_id_from_query(query: CallbackQuery) -> int:
     return query.from_user.id
 
 
+def _callback_payload(query: CallbackQuery) -> str:
+    """Возвращает часть callback_data после префикса (например, id услуги/слота).
+
+    query.data — это `str` у всех наших колбэков (мы сами их генерируем в fsm.py). aiogram
+    помечает поле как `str | None` на случай game/inline-колбэков без data, поэтому здесь
+    явно проверяем и поднимаем ошибку, если данных вдруг нет.
+    """
+    if query.data is None:
+        raise RuntimeError("Callback без data")
+    return query.data.split(":", 1)[1]
+
+
 @router.callback_query(F.data == "cancel")
 async def cb_cancel(query: CallbackQuery, storage: BookingStorage) -> None:
     await storage.reset(_telegram_id_from_query(query))
-    await query.message.edit_text("Запись отменена. Напишите /start, чтобы начать заново.")
+    await _message_from_query(query).edit_text(
+        "Запись отменена. Напишите /start, чтобы начать заново."
+    )
     await query.answer()
 
 
 @router.callback_query(F.data.startswith("service:"))
 async def cb_service(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
-    service_id = int(query.data.split(":", 1)[1])
+    service_id = int(_callback_payload(query))
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_MASTER)
     await storage.save(user_id, service_id=service_id)
 
     keyboard = await fsm.masters_keyboard(db, service_id)
-    await query.message.edit_text("Теперь выберите мастера 👇", reply_markup=keyboard)
+    await _message_from_query(query).edit_text("Теперь выберите мастера 👇", reply_markup=keyboard)
     await query.answer()
 
 
 @router.callback_query(F.data.startswith("master:"))
 async def cb_master(query: CallbackQuery, storage: BookingStorage) -> None:
-    master_id = int(query.data.split(":", 1)[1])
+    master_id = int(_callback_payload(query))
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_DATE)
     await storage.save(user_id, master_id=master_id)
 
     keyboard = fsm.day_keyboard()
-    await query.message.edit_text("Выберите дату 👇", reply_markup=keyboard)
+    await _message_from_query(query).edit_text("Выберите дату 👇", reply_markup=keyboard)
     await query.answer()
 
 
 @router.callback_query(F.data.startswith("day:"))
 async def cb_day(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
-    day_text = query.data.split(":", 1)[1]
+    day_text = _callback_payload(query)
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_SLOT)
     await storage.save(user_id, day=day_text)
 
     ctx = await storage.get_context(user_id)
+    if ctx.master_id is None or ctx.service_id is None:
+        raise RuntimeError("В контексте записи нет master_id/service_id перед выбором слота")
     day = date.fromisoformat(day_text)
     keyboard = await fsm.slots_keyboard(db, ctx.master_id, ctx.service_id, day)
-    await query.message.edit_text("Свободное время 👇", reply_markup=keyboard)
+    await _message_from_query(query).edit_text("Свободное время 👇", reply_markup=keyboard)
     await query.answer()
 
 
@@ -111,7 +147,9 @@ async def cb_day(query: CallbackQuery, db: DBManager, storage: BookingStorage) -
 async def cb_slot(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
     user_id = _telegram_id_from_query(query)
     ctx = await storage.get_context(user_id)
-    starts_at = datetime.fromisoformat(query.data.split(":", 1)[1])
+    if ctx.client_id is None or ctx.master_id is None or ctx.service_id is None:
+        raise RuntimeError("В контексте записи не хватает client_id/master_id/service_id")
+    starts_at = datetime.fromisoformat(_callback_payload(query))
 
     await fsm.create_appointment(db, ctx.client_id, ctx.master_id, ctx.service_id, starts_at)
 
@@ -122,7 +160,7 @@ async def cb_slot(query: CallbackQuery, db: DBManager, storage: BookingStorage) 
     text = await fsm.confirm_text(client.name, master.name, service.name, starts_at)
 
     await storage.set_state(user_id, BookingState.DONE)
-    await query.message.edit_text(text)
+    await _message_from_query(query).edit_text(text)
     await query.answer()
 
 
@@ -131,7 +169,7 @@ async def cb_back_to_service(query: CallbackQuery, db: DBManager, storage: Booki
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_SERVICE)
     keyboard = await fsm.services_keyboard(db)
-    await query.message.edit_text("Выберите услугу 👇", reply_markup=keyboard)
+    await _message_from_query(query).edit_text("Выберите услугу 👇", reply_markup=keyboard)
     await query.answer()
 
 
@@ -139,9 +177,11 @@ async def cb_back_to_service(query: CallbackQuery, db: DBManager, storage: Booki
 async def cb_back_to_master(query: CallbackQuery, db: DBManager, storage: BookingStorage) -> None:
     user_id = _telegram_id_from_query(query)
     ctx = await storage.get_context(user_id)
+    if ctx.service_id is None:
+        raise RuntimeError("В контексте записи нет service_id перед выбором мастера")
     await storage.set_state(user_id, BookingState.CHOOSE_MASTER)
     keyboard = await fsm.masters_keyboard(db, ctx.service_id)
-    await query.message.edit_text("Выберите мастера 👇", reply_markup=keyboard)
+    await _message_from_query(query).edit_text("Выберите мастера 👇", reply_markup=keyboard)
     await query.answer()
 
 
@@ -150,5 +190,5 @@ async def cb_back_to_date(query: CallbackQuery, storage: BookingStorage) -> None
     user_id = _telegram_id_from_query(query)
     await storage.set_state(user_id, BookingState.CHOOSE_DATE)
     keyboard = fsm.day_keyboard()
-    await query.message.edit_text("Выберите дату 👇", reply_markup=keyboard)
+    await _message_from_query(query).edit_text("Выберите дату 👇", reply_markup=keyboard)
     await query.answer()

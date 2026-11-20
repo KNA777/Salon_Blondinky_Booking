@@ -3,6 +3,6 @@ from app.patterns.mapper.base import MapperBase
 from app.schemas.service import ServiceOut
 
 
-class ServiceMapper(MapperBase):
+class ServiceMapper(MapperBase[ServiceOut]):
     schema = ServiceOut
     model = ServiceORM

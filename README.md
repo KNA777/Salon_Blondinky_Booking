@@ -18,6 +18,32 @@
 - **pytest** + **pytest-asyncio** — тесты; **Ruff** — линтер/форматтер.
 - **uv** — менеджер зависимостей и окружения; **Docker Compose** — локальная инфраструктура.
 
+## Архитектура
+
+```
+                        ┌─────────────────────────────────────┐
+  Telegram клиент ─────▶│  FastAPI (app/main.py)              │
+  (бот / Mini App)      │   ├─ REST API (app/api/)            │
+                        │   ├─ Webhook /webhook/bot            │
+                        │   └─ lifespan: engine + Redis + Bot  │
+                        └───────┬──────────────┬──────────────┘
+                                │              │
+                    asyncpg     │              │ aiogram
+                     (async)    ▼              ▼
+                        ┌────────────┐  ┌────────────┐
+                        │ PostgreSQL  │  │   Redis    │
+                        │  (данные,   │  │ (FSM-стоты,│
+                        │  exclusion  │  │  кэш,      │
+                        │  constraint)│  │  очередь)  │
+                        └────────────┘  └────────────┘
+```
+
+- **API-слой** (`app/api/`) — эндпоинты, зависимости (`deps.py`) читают JWT из cookie/Bearer.
+- **Доменный слой** (`app/services/`) — чистые функции без БД: слоты, машина статусов, конфликты.
+- **Слой данных** (`app/patterns/`) — repository (доступ к БД) + mapper (ORM ↔ Pydantic).
+- **Бот** (`app/bot/`) — aiogram, FSM-диалог; состояние в Redis (webhook) или памяти (polling).
+- Всё время хранится в UTC (`timestamptz`), на границе API/бота переводится в `SALON_TIMEZONE`.
+
 ## Возможности (готово на текущий момент)
 
 - CRUD по услугам, мастерам, рабочим часам, клиентам, записям.
@@ -103,6 +129,9 @@ uv run python -m app.bot
 | `JWT_SECRET_KEY` | ключ подписи JWT-токенов (в проде — длинная случайная строка) | нет (есть dev-дефолт) |
 | `JWT_ALGORITHM` | алгоритм подписи токена (по умолчанию `HS256`) | нет |
 | `JWT_EXPIRE_MINUTES` | время жизни access-токена в минутах (по умолчанию 1440) | нет |
+| `COOKIE_NAME` | имя cookie с access-токеном (по умолчанию `access_token`) | нет |
+| `COOKIE_SECURE` | `true` передаёт cookie только по HTTPS (в проде) | нет |
+| `COOKIE_SAMESITE` | политика SameSite cookie (по умолчанию `lax`) | нет |
 
 ## Аутентификация и владение записью
 
@@ -111,8 +140,16 @@ uv run python -m app.bot
 - `POST /auth/register` — создать клиента с паролем, вернуть токен.
 - `POST /auth/login` — вход по телефону и паролю, вернуть токен.
 
-Дальше токен передаётся в заголовке `Authorization: Bearer <token>`. Зависимость
-`get_current_client` (в `app/api/deps.py`) расшифровывает его и выдаёт текущего клиента.
+Токен кладётся в **httpOnly cookie** (`Set-Cookie: access_token=...; HttpOnly; SameSite=Lax`),
+а не в тело ответа. Браузер сам отсылает эту cookie на каждый запрос к домену, поэтому
+фронту/мини-аппу не нужно вручную хранить и прикреплять токен. Флаг `HttpOnly` не даёт
+JavaScript прочитать cookie — это защита от кражи токена через XSS.
+
+Зависимость `get_current_client` (в `app/api/deps.py`) читает токен сначала из cookie,
+затем — фолбэк на заголовок `Authorization: Bearer <token>` (для API-клиентов и тестов).
+
+Настройки cookie: `COOKIE_NAME` (имя), `COOKIE_SECURE` (в проде — `true`, нужен HTTPS),
+`COOKIE_SAMESITE` (по умолчанию `lax`).
 
 **Владение записью**: клиент может отменять (`/cancel`) и переносить (`/reschedule`) только
 свои записи — проверка идёт по `client_id`. Клиент с флагом `is_admin = true` управляет
@@ -160,11 +197,31 @@ https://api.telegram.org/bot<ТОКЕН>/setWebhook?url=<PUBLIC_URL>/webhook/bot
 ## Разработка
 
 ```bash
-uv sync               # создать .venv и поставить зависимости (коммитим uv.lock)
-uv run pytest         # тесты
-uv run ruff check .   # линтер
-uv run ruff format .  # форматирование
+uv sync                      # создать .venv и поставить зависимости (коммитим uv.lock)
+uv run pytest                # все тесты (интеграционные пропускаются без Postgres)
+uv run pytest --ignore=tests/integration   # только юнит-тесты (без БД)
+uv run ruff check .          # линтер
+uv run ruff format .         # форматирование
+uv run mypy app              # проверка типов
 ```
+
+Интеграционные тесты (`tests/integration/`) требуют запущенный Postgres — они сами
+поднимают отдельную тестовую БД `salon_blondinky_test` и пропускаются (`pytest.skip`),
+если БД недоступна.
+
+### pre-commit
+
+Линтер и форматтер запускаются автоматически перед каждым коммитом:
+
+```bash
+uv run pre-commit install   # один раз
+uv run pre-commit run --all-files   # запустить вручную для всех файлов
+```
+
+### CI
+
+`.github/workflows/ci.yml` прогоняет на каждый push/PR три задачи: `ruff` + `mypy`,
+юнит-тесты и интеграционные тесты (с собственным Postgres-сервисом).
 
 Миграции находятся в `app/migrations/`, генерируются и управляются Alembic.
 
@@ -209,7 +266,7 @@ uv run pytest -q && uv run ruff check .
 
 ## Оговорки текущего этапа
 
-- Теста на сам exclusion-constraint (гонка на уровне БД) пока нет: он требует реального
-  Postgres и отложен до интеграционных тестов.
+- Напоминания о записи (за 24 и 2 часа) и валидация Telegram `initData` ещё не реализованы —
+  см. план `salon-booking-plan.xlsx`.
 
 Полный пошаговый план — в файле `salon-booking-plan.xlsx` (корень рабочей директории).

@@ -3,6 +3,6 @@ from app.patterns.mapper.base import MapperBase
 from app.schemas.working_hour import WorkingHourOut
 
 
-class WorkingHourMapper(MapperBase):
+class WorkingHourMapper(MapperBase[WorkingHourOut]):
     schema = WorkingHourOut
     model = WorkingHourORM

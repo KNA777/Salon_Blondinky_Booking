@@ -4,9 +4,10 @@ from sqlalchemy import insert, select
 from app.models import WorkingHourORM
 from app.patterns.mapper.working_hours import WorkingHourMapper
 from app.patterns.repository.base import BaseRepository
+from app.schemas.working_hour import WorkingHourOut
 
 
-class WorkingHourRepository(BaseRepository):
+class WorkingHourRepository(BaseRepository[WorkingHourOut]):
     model = WorkingHourORM
     mapper = WorkingHourMapper
 

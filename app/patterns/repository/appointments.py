@@ -4,11 +4,12 @@ from app.core.exceptions import NotFoundError, PermissionError, SlotConflictErro
 from app.models import AppointmentORM, AppointmentStatusEnum
 from app.patterns.mapper.appointments import AppointmentMapper
 from app.patterns.repository.base import BaseRepository
+from app.schemas.appointment import AppointmentOut
 from app.services.booking_conflict import BLOCKING_STATUSES, overlaps
 from app.services.status_machine import validate_transition
 
 
-class AppointmentRepository(BaseRepository):
+class AppointmentRepository(BaseRepository[AppointmentOut]):
     model = AppointmentORM
     mapper = AppointmentMapper
 

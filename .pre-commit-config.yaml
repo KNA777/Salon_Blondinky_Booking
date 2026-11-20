@@ -1,0 +1,25 @@
+# pre-commit: хуки прогоняются на застейдженных файлах при каждом `git commit`.
+# Установка (один раз):  uv sync --group dev && uv run pre-commit install
+# Запуск вручную:        uv run pre-commit run --all-files
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        # Передаём пакет и дополнительные зависимости явно, чтобы mypy видел сигнатуры
+        # FastAPI/SQLAlchemy/Pydantic и не ругался на «module has no attribute».
+        additional_dependencies:
+          - fastapi
+          - pydantic
+          - pydantic-settings
+          - sqlalchemy
+          - aiogram
+          - types-redis
+          - types-PyJWT
+          - bcrypt

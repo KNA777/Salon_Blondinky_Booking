@@ -6,6 +6,7 @@
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Literal, TypedDict
 
 import bcrypt
 import jwt
@@ -60,7 +61,19 @@ def decode_token(token: str) -> int | None:
         return None
 
 
-def build_auth_cookie(token: str) -> dict[str, str]:
+class AuthCookie(TypedDict):
+    """Параметры `Set-Cookie`, совместимые с `Response.set_cookie` (Starlette)."""
+
+    key: str
+    value: str
+    httponly: bool
+    secure: bool
+    samesite: Literal["lax", "strict", "none"]
+    max_age: int
+    path: str
+
+
+def build_auth_cookie(token: str) -> AuthCookie:
     """Формирует параметры `Set-Cookie` для access-токена.
 
     Возвращает dict с ключом и значением куки. HttpOnly включён всегда (JS не увидит
@@ -80,7 +93,7 @@ def build_auth_cookie(token: str) -> dict[str, str]:
     }
 
 
-def clear_auth_cookie() -> dict[str, str]:
+def clear_auth_cookie() -> AuthCookie:
     """Параметры `Set-Cookie` для удаления access-токена (выход из аккаунта).
 
     Пустое значение + max_age=0 заставляют браузер удалить куку с тем же именем и путём.

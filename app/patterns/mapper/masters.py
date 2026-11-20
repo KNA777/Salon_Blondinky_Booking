@@ -3,6 +3,6 @@ from app.patterns.mapper.base import MapperBase
 from app.schemas.master import MasterOut
 
 
-class MasterMapper(MapperBase):
+class MasterMapper(MapperBase[MasterOut]):
     schema = MasterOut
     model = MasterORM

@@ -24,6 +24,8 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx>=0.27",
     "ruff>=0.6",
+    "mypy>=1.11",
+    "pre-commit>=3.8",
 ]
 
 [tool.ruff]
@@ -42,4 +44,16 @@ testpaths = ["tests"]
 pythonpath = ["."]
 # async def test_* автоматически оборачиваются pytest-asyncio (без явных @pytest.mark.asyncio).
 asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+# Ловим реальные ошибки: пропущенные аннотации, несоответствие типов на границах вызовов.
+check_untyped_defs = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+# Сторонние библиотеки без полных stubs не должны валить CI (aiogram, asyncpg, redis и т.п.).
+ignore_missing_imports = true
+# Миграции Alembic генерируются автоматически и не следуют строгой типизации проекта.
+exclude = ["^app/migrations/"]
 

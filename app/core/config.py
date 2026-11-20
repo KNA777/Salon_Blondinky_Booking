@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
@@ -55,7 +56,7 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     # SameSite контролирует отправку куки на кросс-сайтовые запросы. Lax — безопасный
     # дефолт: кука идёт по переходам сверху, но не в чужих iframe/кросс-домен fetch.
-    cookie_samesite: str = "lax"
+    cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     # Путь действия куки — весь сайт по умолчанию.
     cookie_path: str = "/"
 
@@ -81,4 +82,6 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     # lru_cache: настройки читаются и проверяются один раз, а не при каждом запросе.
-    return Settings()
+    # Обязательные поля (postgres_user и т.д.) заполняются из .env/переменных окружения,
+    # чего mypy не видит — считает их «не переданными» аргументами конструктора.
+    return Settings()  # type: ignore[call-arg]

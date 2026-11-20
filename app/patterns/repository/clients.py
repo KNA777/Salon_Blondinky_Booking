@@ -7,7 +7,7 @@ from app.patterns.repository.base import BaseRepository
 from app.schemas.client import ClientCreate, ClientOut
 
 
-class ClientRepository(BaseRepository):
+class ClientRepository(BaseRepository[ClientOut]):
     model = ClientORM
     mapper = ClientMapper
 
